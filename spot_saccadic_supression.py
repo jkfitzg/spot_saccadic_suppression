@@ -195,7 +195,7 @@ class Spot_Saccadic_Supression(Flight):
             #    self.n_trs = self.n_trs - 1
             
         self.unique_stim_types = np.unique(stim_types) 
-        print 'trial types = ' + str(self.unique_stim_types)
+        # print 'trial types = ' + str(self.unique_stim_types)
         
         self.stim_types = stim_types  #change to integer, although nans are also useful
         
@@ -236,7 +236,7 @@ class Spot_Saccadic_Supression(Flight):
             n_cnd_trs = np.size(this_cnd_trs)
             
             # get colormap info ______________________________________________________
-            cmap = plt.cm.get_cmap('jet') 
+            cmap = plt.cm.get_cmap('spectral') 
             cNorm  = colors.Normalize(0,n_cnd_trs)
             scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
 
@@ -263,7 +263,7 @@ class Spot_Saccadic_Supression(Flight):
                 wba_trace = wba_trace - baseline  
      
                 non_nan_i = np.where(~np.isnan(wba_trace))[0] 
-                filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=24)
+                filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=12)
                  
                 wba_ax.plot(filtered_wba_trace,color=this_color)
                 #wba_ax.plot(wba_trace,color=this_color)
@@ -295,7 +295,8 @@ class Spot_Saccadic_Supression(Flight):
             all_wba_ax[col].tick_params(labelbottom='off')
             
             # label columns
-            all_wba_ax[col].set_title(self.stim_types_labels[int(cnd)],fontsize=12)
+            all_wba_ax[col].set_title(self.stim_types_labels[cnds_to_plot[col]],fontsize=12)
+            
             
             if col == 0:           
                 all_wba_ax[col].set_ylabel('L-R WBA (V)')
@@ -333,16 +334,18 @@ class Spot_Saccadic_Supression(Flight):
 
         if if_save:
             saveas_path = '/Users/jamie/bin/figures/'
-            plt.savefig(saveas_path + figure_txt + '_sacc_supression_wba_by_cnd_filtered_cutoff24.png',\
+            plt.savefig(saveas_path + figure_txt + '_sacc_supression_wba_by_cnd_filtered_cutoff12.png',\
                             bbox_inches='tight',dpi=100) 
 
-    def plot_wba_by_cnd_y_offset(self,title_txt='',tr_range=slice(None), if_save=True): 
+    def plot_wba_by_cnd_y_offset(self,title_txt='',trs_to_mark=[],tr_range=slice(None),filter_cutoff=24,if_save=True): 
         # plot single trace of each of the four saccadic movement conditions
         
         sampling_rate = 1000            # in hertz ********* move to fly info
         s_iti = .25 * sampling_rate      # ********* move to fly info
         
-        baseline_win = range(0*sampling_rate,int(.125*sampling_rate)) 
+        #baseline_win = range(0*sampling_rate,int(.125*sampling_rate)) 
+        baseline_win = range(0*sampling_rate,int(.1*sampling_rate)) 
+        
         
         #get all traces and detect saccades ______________________________________________
         all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=False)
@@ -351,10 +354,10 @@ class Spot_Saccadic_Supression(Flight):
         n_rows = 2
         
         cnds_to_plot = self.unique_stim_types
-        gs = gridspec.GridSpec(n_rows,n_cols,height_ratios=[1,.1])
+        gs = gridspec.GridSpec(n_rows,n_cols,height_ratios=[1,.05])
 
-        fig = plt.figure(figsize=(16.5, 9))
-        gs.update(wspace=0.1, hspace=0.2) # set the spacing between axes. 
+        fig = plt.figure(figsize=(16, 12.5))
+        gs.update(wspace=0.1, hspace=0.025) # set the spacing between axes. 
         
         #store all subplots for formatting later           
         all_wba_ax = np.empty(n_cols,dtype=plt.Axes)
@@ -370,7 +373,7 @@ class Spot_Saccadic_Supression(Flight):
             n_cnd_trs = np.size(this_cnd_trs)
             
             # get colormap info ______________________________________________________
-            cmap = plt.cm.get_cmap('jet') 
+            cmap = plt.cm.get_cmap('spectral')  #('gnuplot2')  
             cNorm  = colors.Normalize(0,n_cnd_trs)
             scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
 
@@ -399,9 +402,17 @@ class Spot_Saccadic_Supression(Flight):
                 #wba_ax.plot(wba_trace+i/2.0,color=this_color)
                
                 non_nan_i = np.where(~np.isnan(wba_trace))[0]  #I shouldn't need these. remove nans earlier. ****************
-                filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=24)
+                filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=filter_cutoff)
                  
-                wba_ax.plot(filtered_wba_trace+i/7.5,color=this_color)    
+                 
+                # check if stim,trial combination is in this list. if so, plot in 
+                # a thick line
+                if (col,i) in trs_to_mark:
+                    wba_ax.plot(filtered_wba_trace+i/5.0,color=this_color,linewidth=5)    
+                else:
+                    wba_ax.plot(filtered_wba_trace+i/3.0,color=this_color,linewidth=1)    
+                
+                
                 
                
                 #cutoff=12
@@ -419,19 +430,23 @@ class Spot_Saccadic_Supression(Flight):
             # show baseline window
             all_wba_ax[col].axvspan(baseline_win[0], baseline_win[-1], facecolor='grey', alpha=0.5)    
             
+            # show 400 ms before turn window
+            #all_wba_ax[col].axvspan(220, 620, facecolor='black', alpha=0.33)    
+            
             # show turn window
-            all_wba_ax[col].axvspan(400, 550, facecolor='black', alpha=0.5)    
+            all_wba_ax[col].axvspan(620, 770, facecolor='black', alpha=0.75)    
             
             # remove all time xticklabels __________________________________
             all_wba_ax[col].tick_params(labelbottom='off')
             
             # label columns
-            all_wba_ax[col].set_title(self.stim_types_labels[cnds_to_plot[col]],fontsize=12)
+            all_wba_ax[col].set_title(self.stim_types_labels[cnds_to_plot[col]],fontsize=10)
             
             if col == 0:           
-                all_wba_ax[col].set_ylabel('L-R WBA (V)')
-            
-                #all_wba_ax[col].set_ylim([-.75,5.25])
+                all_wba_ax[col].set_ylabel('L-R WBA (V)',fontsize=10)
+                #all_wba_ax[col].set_ylim([-.5,10.5])
+                #all_wba_ax[col].set_ylim([-.5,16])
+                
                 #all_wba_ax[col].set_yticks([wba_lim[0],0,wba_lim[1]])
                 
                 all_stim_ax[col].tick_params(labelleft='off')
@@ -451,7 +466,7 @@ class Spot_Saccadic_Supression(Flight):
                 all_stim_ax[col].xaxis.set_major_formatter(formatter)
                 all_stim_ax[col].tick_params(labelbottom='on')
                 all_stim_ax[col].tick_params(labelleft='off')
-                all_stim_ax[col].set_xlabel('Time (s)')
+                all_stim_ax[col].set_xlabel('Time (s)',fontsize=10)
             else:
                 all_wba_ax[col].tick_params(labelleft='off')
                 all_stim_ax[col].tick_params(labelleft='off')
@@ -464,7 +479,7 @@ class Spot_Saccadic_Supression(Flight):
 
         if if_save:
             saveas_path = '/Users/jamie/bin/figures/'
-            plt.savefig(saveas_path + figure_txt + '_wba_by_cnd_overlay_filter24.png',\
+            plt.savefig(saveas_path + figure_txt + '_wba_by_cnd_overlay_filter_cutoff'+str(filter_cutoff)+'.png',\
                             bbox_inches='tight',dpi=100)     
         
         
@@ -546,7 +561,7 @@ class Spot_Saccadic_Supression(Flight):
      
         return turn_win_mean, tr_cnds
         
-    def get_traces_by_stim(self,fly_name='this_fly',iti=5000,get_saccades=False):
+    def get_traces_by_stim(self,fly_name='this_fly',iti=.25*1000,get_saccades=False):
     # here extract the traces for each of the stimulus times. 
     # align to looming start, and add the first pre stim and post stim intervals
     # here return a data frame of lwa and rwa wing traces
@@ -560,8 +575,8 @@ class Spot_Saccadic_Supression(Flight):
        
         for tr in range(self.n_trs):
             this_loom_start = self.tr_starts[tr]
-            this_start = this_loom_start + 3*iti  #- iti
-            this_stop = self.tr_stops[tr] + 2*iti  #hack ----------
+            this_start = this_loom_start + 2*iti  #- iti
+            this_stop = self.tr_stops[tr] + iti  #hack ----------
             
             this_stim_type = self.stim_types[tr]
             iterables = [[fly_name],
@@ -696,7 +711,7 @@ def butter_lowpass(cutoff, fs, order=5):
     b, a = sp.signal.butter(order, normal_cutoff, btype='low', analog=False)
     return b, a
 
-def butter_lowpass_filter(data, cutoff=12, fs=1000, order=5): #how does the order change?
+def butter_lowpass_filter(data, cutoff=12, fs=2000, order=5): #how does the order change?
     b, a = butter_lowpass(cutoff, fs, order)
     #y = sp.signal.lfilter(b, a, data) #what's the difference here? 
     y = sp.signal.filtfilt(b, a, data)
