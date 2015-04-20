@@ -407,13 +407,11 @@ class Spot_Saccadic_Supression(Flight):
     
                 baseline = np.nanmean(wba_trace[baseline_win])
                 wba_trace = wba_trace - baseline  
-     
                 #wba_ax.plot(wba_trace+i/2.0,color=this_color)
                
                 non_nan_i = np.where(~np.isnan(wba_trace))[0] 
                 filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=filter_cutoff)
-                 
-                 
+                
                 # check if stim,trial combination is in this list. if so, plot in 
                 # a thick line
                 if (col,i) in trs_to_mark:
@@ -421,8 +419,14 @@ class Spot_Saccadic_Supression(Flight):
                 else:
                     wba_ax.plot(filtered_wba_trace+i/tr_offset,color=this_color,linewidth=1)    
                 
-                #wba_ax.text(.6,i/3.0,str(i),
+                # now get potential saccade start times by differentiating the filtered
+                # trace and then applying and threshold
+                candidate_saccade_is = find_candidate_saccades(filtered_wba_trace,diff_thres=0.01)
                 
+                wba_ax.plot(candidate_saccade_is,filtered_wba_trace[candidate_saccade_is]+i/tr_offset,\
+                            marker='*',linestyle='None',color=black)
+                 
+                 
                 wba_ax.text(0,i/tr_offset,str(i),
                     verticalalignment='bottom', horizontalalignment='right',
                     color=this_color, fontsize=8)
@@ -640,6 +644,8 @@ class Spot_Saccadic_Supression(Flight):
                  fly_saccades_df = pd.concat([fly_saccades_df,tr_saccade_starts_df],axis=1)
             
         return fly_df, fly_saccades_df 
+        
+    
        
         
 #---------------------------------------------------------------------------#
@@ -683,6 +689,25 @@ def read_abf(abf_filename):
             analog_signals_dict[analog_signal.name.lower()] = analog_signal
 
         return analog_signals_dict
+        
+def find_candidate_saccades(filtered_lmr_trace,diff_thres=0.005):
+    # return the index positions within filtered_lmr_trace of candidate 
+    # saccades, as shown by high derivates
+    
+    lmr_diff_above_thres = np.where(np.abs(np.diff(filtered_lmr_trace)) >= diff_thres)[0]
+
+    # then find the first of sequential points 
+    min_separation = 5
+    above_thres_diff = np.where(np.diff(lmr_diff_above_thres) > min_separation)[0]
+    potential_saccade_start_is = lmr_diff_above_thres[above_thres_diff+1]
+    
+    # now add the first start
+    if lmr_diff_above_thres.size:
+        potential_saccade_start_is = np.hstack([lmr_diff_above_thres[0],potential_saccade_start_is])
+        potential_saccade_start_is = potential_saccade_start_is - 1
+    
+    return potential_saccade_start_is
+    
              
 def find_saccades(raw_lmr_trace,test_plot=False):
     #first fill in nans with nearest signal
