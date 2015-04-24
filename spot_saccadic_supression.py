@@ -791,433 +791,6 @@ def butter_lowpass_filter(data, cutoff=12, fs=2000, order=5): #how does the orde
     y = sp.signal.filtfilt(b, a, data)
     return y
       
-def write_to_pdf(f_name,figures_list):
-    from matplotlib.backends.backend_pdf import PdfPages
-    pp = PdfPages(fname)
-    for f in figures_list:
-        pp.savefig(f)
-    pp.close()
-
-def plot_many_flies(path_name, filenames_df):    
-
-    #loop through all genotypes
-    genotypes = (pd.unique(filenames_df.values[:,1]))
-    print genotypes
-    
-    for g in genotypes:
-        these_genotype_indicies = np.where(filenames_df.values[:,1] == g)[0]
-    
-        for index in these_genotype_indicies:
-            print index
-        
-            fly = Looming_Behavior(path_name + filenames_df.values[index,0])
-            title_txt = filenames_df.values[index,1] + '  ' + filenames_df.values[index,0]
-            fly.process_fly()
-            fly.plot_wba_stim(title_txt)
-        
-            saveas_path = '/Users/jamie/bin/figures/'
-            plt.savefig(saveas_path + title_txt + '_kir_looming.png',dpi=100)
-            plt.close('all')
-                    
-def get_pop_traces_df(path_name, population_f_names, one_task):  
-    
-    # within a task, loop through all genotypes
-    # structure row = time points, aligned to trial  start
-    # columns: genotype, fly, trial index, trial type, lmr/xstim
-
-    this_experiment_flies = np.where(population_f_names['experiment'] == one_task)[0]
-    
-    #genotypes must be sorted to the labels for columns 
-    genotypes = (pd.unique(population_f_names.loc[this_experiment_flies,'genotype']))
-    genotypes = np.sort(genotypes)
-    
-    population_df = pd.DataFrame()
-        
-   #loop through each genotype  
-    for g in genotypes: # remove this restriction ---------------
-        this_genotype_indicies = this_experiment_flies[np.where(population_f_names.values[this_experiment_flies,1] == g)[0]]
-        
-        for index in this_genotype_indicies:  # remove this restriction ---------------
-            
-            fly_f_name = population_f_names.values[index,0]
-            fly_col_name = g+' __ '+str(index).zfill(2)+' __ '+fly_f_name
-            print fly_col_name
-            
-            fly = Spot_Adaptation_Flight(path_name + fly_f_name)
-            fly.process_fly()
-            fly_df, saccades_df = fly.get_traces_by_stim(fly_col_name)
-            fly_df_subset = fly_df.loc[:,(slice(None),slice(None),slice(None),['lmr','xstim'])]
-            
-            population_df = pd.concat([population_df,fly_df],axis=1) # change this to pre-initialize the df size
-            
-    return population_df
-     
-def plot_pop_flight_behavior_histograms(population_df, wba_lim=[-3,3],cnds_to_plot=range(9)):  
-    #for the looming data, plot histograms over time of all left-right
-    #wba traces
-    
-    #instead send the population dataframe as a parameter
-    
-    #get a two-dimensional multi-indexed data frame with the population data
-    #population_df = get_pop_flight_traces(path_name, population_f_names)
-   
-    #loop through each genotype  --- genotypes must be sorted to be column labels
-    #change code so I just do this in the get_pop_flight_traces
-    all_genotype_fields = population_df.columns.get_level_values(0)
-    genotypes = np.unique(all_genotype_fields)
-    
-    x_lim = [0, 4075]
-    
-    for g in genotypes:
-        print g
-        
-        #calculate the number of cells/genotype
-        all_cell_names = population_df.loc[:,(g)].columns.get_level_values(0)
-        n_cells = np.size(np.unique(all_cell_names))
-        
-        title_txt = g + ' __ ' + str(n_cells) + ' flies' #also add number of flies and trials here 
-        #calculate the number of flies and trials for the caption
-    
-        fig = plt.figure(figsize=(16.5, 9))
-        #change this so I'm not hardcoding the number of axes
-        gs = gridspec.GridSpec(6,3,width_ratios=[1,1,1],height_ratios=[4,1,4,1,4,1])
-    
-        #loop through conditions -- later restrict these
-        for cnd in cnds_to_plot:
-            grid_row = int(2*math.floor(cnd/3)) #also hardcoding
-            grid_col = int(cnd%3)
-     
-            #plot WBA histogram signal -----------------------------------------------------------    
-            wba_ax = plt.subplot(gs[grid_row,grid_col])     
-        
-            g_lwa = population_df.loc[:,(g,slice(None),slice(None),cnd,'lwa')].as_matrix()
-            g_rwa = population_df.loc[:,(g,slice(None),slice(None),cnd,'rwa')].as_matrix()    
-            g_lmr = g_lwa - g_rwa
-        
-            #get baseline, substract from traces
-            baseline = np.nanmean(g_lmr[200:700,:],0) #parametize this
-            g_lmr = g_lmr - baseline
-        
-            #just plot the mean for debugging
-            #wba_ax.plot(np.nanmean(g_lmr,1))
-        
-            #now plot the histograms over time. ------------
-            max_t = np.shape(g_lmr)[0]
-            n_trs = np.shape(g_lmr)[1]
-                     
-            t_points = range(max_t)
-            t_matrix = np.tile(t_points,(n_trs,1))
-            t_matrix_t = np.transpose(t_matrix)
-
-            t_flat = t_matrix_t.flatten() 
-            g_lmr_flat = g_lmr.flatten()
-
-            #now remove nans
-            g_lmr_flat = g_lmr_flat[~np.isnan(g_lmr_flat)]
-            t_flat = t_flat[~np.isnan(g_lmr_flat)]
-
-            #calc, plot histogram
-            h2d, xedges, yedges = np.histogram2d(t_flat,g_lmr_flat,bins=[200,50],range=[[0, 4200],[-3,3]],normed=True)
-            wba_ax.pcolormesh(xedges, yedges, np.transpose(h2d))
-        
-           
-            #plot white line for 0 -----------
-            wba_ax.axhline(color=white)
-        
-            wba_ax.set_xlim(x_lim) 
-            
-            if grid_row == 0 and grid_col == 0:
-                wba_ax.yaxis.set_ticks(wba_lim)
-                wba_ax.set_ylabel('L-R WBA (mV)')
-            else:
-                wba_ax.yaxis.set_ticks([])
-            wba_ax.xaxis.set_ticks([])
-              
-            #now plot stim -----------------------------------------------------------
-            stim_ax = plt.subplot(gs[grid_row+1,grid_col])
-        
-            #assume the first trace of each is typical
-            y_stim = population_df.loc[:,(g,slice(None),slice(None),cnd,'ystim')]
-            stim_ax.plot(y_stim.iloc[:,0],color=blue)
-        
-            stim_ax.set_xlim(x_lim) 
-            stim_ax.set_ylim([0, 10]) 
-        
-            if grid_row == 4 and grid_col == 0:
-                stim_ax.xaxis.set_ticks(x_lim)
-                stim_ax.set_xticklabels(['0','.4075'])
-                stim_ax.set_xlabel('Time (s)') 
-            else:
-                stim_ax.xaxis.set_ticks([])
-            stim_ax.yaxis.set_ticks([])
-            
-        #now annotate        
-        fig.text(.06,.8,'left',fontsize=14)
-        fig.text(.06,.53,'center',fontsize=14)
-        fig.text(.06,.25,'right',fontsize=14)
-        
-        fig.text(.22,.905,'22 l/v',fontsize=14)
-        fig.text(.495,.905,'44 l/v',fontsize=14)
-        fig.text(.775,.905,'88 l/v',fontsize=14)
-        
-        fig.text(.425,.95,title_txt,fontsize=18)        
-        plt.draw() 
-
-        saveas_path = '/Users/jamie/bin/figures/'
-        plt.savefig(saveas_path + title_txt + '_population_kir_looming_histograms.png',dpi=100)
-        #plt.close('all')
-
-def plot_pop_flight_behavior_means(population_df, protocol, wba_lim=[-1,1]):  
-    #plot the means of all left-right by condition wba traces
-    #inputs --  population dataframe 
-    
-    all_fly_names = np.unique(population_df.columns.get_level_values(0))
-    n_flies = np.size(all_fly_names)
-        
-    x_lim = [0, 4075]  #update this _________________________
-    
-    
-    n_tr_thres = 40
-    n_cols = 2
-        
-    if protocol == '1/f grating':
-        cnds_to_plot = np.asarray([[3,2],[3,2],[1,0]])
-        n_rows = 3
-        stim_types_labels =['right 1/f grating',
-                        'left 1/f grating',
-                        'right middle spot',
-                        'left middle spot',
-                        'right middle spot',
-                        'left middle spot']
-        
-    elif protocol == 'grating iti':
-        cnds_to_plot = np.asarray([[1,0],[1,0]])
-        n_rows = 2
-        stim_types_labels =['right, middle height',
-                            'left, middle height']
-                            
-    elif protocol == 'looming':
-        cnds_to_plot = np.asarray([[2,1],[2,1],[0,0]])
-        n_rows = 3
-        stim_types_labels =['center looming',
-                        'right middle spot',
-                        'left middle spot',]
-        
-    elif protocol == 'control':
-        cnds_to_plot = np.asarray([[1,0],[1,0],[1,0],[3,2]])
-        n_rows = 4
-        stim_types_labels =['right, middle height',
-                    'left, middle height',
-                    'right, top height',
-                    'left, top height']
-    
-    fig = plt.figure(figsize=(7, 9))
-    gs = gridspec.GridSpec(n_rows*2,n_cols,height_ratios=np.tile([4,1],n_rows))
-        
-        
-    for fly in all_fly_names:
-        print fly
-        
-        title_txt = protocol + ' ' + str(n_flies) + ' flies'  # add task name here
-        
-        if protocol == '1/f grating':
-            title_txt = '1f grating ' + str(n_flies) + ' flies'
-        
-        # add block threshold selection in here _________________________    
-        #loop through conditions  
-        for row in range(n_rows):
-            for col in range(n_cols):
-                cnd = cnds_to_plot[row][col]
-            
-                # make the axis --------------------------------
-                wba_ax = plt.subplot(gs[row*2,col])     
-        
-                # plot the mean of each fly --------------------------------
-                for fly_name in all_fly_names:     
-                    if row == 0:
-                        fly_lmr = population_df.loc[:,(fly_name,slice(0,n_tr_thres),cnd,'lmr')].as_matrix()
-                    else:
-                        fly_lmr = population_df.loc[:,(fly_name,slice(n_tr_thres,200),cnd,'lmr')].as_matrix()
-                        
-                    # get baseline, substract from traces
-                    baseline = np.nanmean(fly_lmr[0:1000,:],0) #parametize this # ____ parametize the baseline window
-                    fly_lmr = fly_lmr - baseline
-            
-                    wba_ax.plot(np.nanmean(fly_lmr,1),color=black,linewidth=.5)      
-        
-                # plot the genotype mean -------------------------------- 
-                if row == 0:
-                    cnd_lmr = population_df.loc[:,(slice(None),slice(0,n_tr_thres),cnd,'lmr')].as_matrix()
-                else:
-                    cnd_lmr = population_df.loc[:,(slice(None),slice(n_tr_thres,200),cnd,'lmr')].as_matrix()
-                
-                # get baseline, subtract from traces
-                cnd_baseline = np.nanmean(cnd_lmr[0:1000,:],0) #parametize this
-                cnd_lmr = cnd_lmr - cnd_baseline
-            
-                wba_ax.plot(np.nanmean(cnd_lmr,1),color=magenta,linewidth=2)
-               
-                #format axis --------------------------------
-                wba_ax.set_title(stim_types_labels[cnd])
-                wba_ax.axhline(color=blue)
-        
-                wba_ax.set_xlim([5000,5500]) 
-                wba_ax.set_ylim(wba_lim)
-                         
-                if row == 0 and col == 0:
-                    wba_ax.yaxis.set_ticks(wba_lim)
-                    wba_ax.set_ylabel('L-R WBA (mV)')
-                else:
-                    wba_ax.set_yticklabels([])
-                wba_ax.set_xticklabels([])
-              
-                # now plot stim -----------------------------------------------------------
-                stim_ax = plt.subplot(gs[row*2+1,col])
-            
-                # assume the first trace of each is typical
-                x_stim = population_df.loc[:,(slice(None),slice(None),cnd,'xstim')].as_matrix()
-                stim_ax.plot(x_stim[:,0])
-
-                x_lim = [5000,5500]
-                stim_ax.set_xlim([5000,5500])  
-                stim_ax.set_ylim([0, 10]) 
-         
-                if row == n_rows-1 and col == 0:
-                    stim_ax.xaxis.set_ticks(x_lim)
-                    stim_ax.set_xticklabels(['0','0.5'])
-                    stim_ax.set_xlabel('Time (s)') 
-                else:
-                    stim_ax.set_xticklabels([''])
-                stim_ax.set_yticklabels([''])
-        
-        
-        fig.text(.425,.95,title_txt,fontsize=18)        
-        plt.draw() 
-
-        saveas_path = '/Users/jamie/bin/figures/'
-        plt.savefig(saveas_path + title_txt + '_population_tethered_flight.png',dpi=100)
-
-        
-def plot_pop_flight_behavior_means_overlay(population_df, two_genotypes, wba_lim=[-3,3], cnds_to_plot=range(9)):  
-    #for the looming data, plot the means of all left-right
-    #wba traces
-    
-    #instead send the population dataframe as a parameter
-    
-    #get a two-dimensional multi-indexed data frame with the population data
-    #population_df = get_pop_flight_traces(path_name, population_f_names)
-   
-    #loop through each genotype  --- genotypes must be sorted to be column labels
-    #change code so I just do this in the get_pop_flight_traces
-    all_genotype_fields = population_df.columns.get_level_values(0)
-    genotypes = np.unique(all_genotype_fields)
-    
-    x_lim = [0, 4075]
-    speed_x_lims = [range(0,2600),range(0,3115),range(0,4075)] #restrict the xlims by condition to not show erroneously long traces
-    
-    fig = plt.figure(figsize=(16.5, 9))
-    #change this so I'm not hardcoding the number of axes
-    gs = gridspec.GridSpec(6,3,width_ratios=[1,1,1],height_ratios=[4,1,4,1,4,1])
-    
-    genotype_colors = [magenta, blue]
-    
-    i = 0 
-    title_txt = '';
-    for g in two_genotypes:
-        print g
-        
-        #calculate the number of cells/genotype
-        all_fly_names = population_df.loc[:,(g)].columns.get_level_values(0)
-        unique_fly_names = np.unique(all_fly_names)
-        n_cells = np.size(unique_fly_names)
-        
-        title_txt = title_txt + g + ' __ ' + str(n_cells) + ' flies ' #also add number of flies and trials here 
-        #calculate the number of flies and trials for the caption
-        
-        #loop through conditions -- later restrict these
-        for cnd in cnds_to_plot:
-            grid_row = int(2*math.floor(cnd/3)) #also hardcoding
-            grid_col = int(cnd%3)
-            this_x_lim = speed_x_lims[grid_col]
-     
-            #make the axis --------------------------------
-            wba_ax = plt.subplot(gs[grid_row,grid_col])     
-        
-            #plot the mean of each fly --------------------------------
-            for fly_name in unique_fly_names:
-                fly_lwa = population_df.loc[:,(g,fly_name,slice(None),cnd,'lwa')].as_matrix()
-                fly_rwa = population_df.loc[:,(g,fly_name,slice(None),cnd,'rwa')].as_matrix()    
-                fly_lmr = fly_lwa - fly_rwa
-        
-                #get baseline, substract from traces
-                baseline = np.nanmean(fly_lmr[200:700,:],0) #parametize this
-                fly_lmr = fly_lmr - baseline
-            
-                wba_ax.plot(np.nanmean(fly_lmr[this_x_lim,:],1),color=genotype_colors[i],linewidth=.25)        
-        
-            #plot the genotype mean --------------------------------   
-            g_lwa = population_df.loc[:,(g,slice(None),slice(None),cnd,'lwa')].as_matrix()
-            g_rwa = population_df.loc[:,(g,slice(None),slice(None),cnd,'rwa')].as_matrix()    
-            g_lmr = g_lwa - g_rwa
-        
-            #get baseline, substract from traces
-            baseline = np.nanmean(g_lmr[200:700,:],0) #parametize this
-            g_lmr = g_lmr - baseline
-            
-            wba_ax.plot(np.nanmean(g_lmr[this_x_lim,:],1),color=genotype_colors[i],linewidth=2)
-              
-            #plot black line for 0 --------------------------------
-            wba_ax.axhline(color=black)
-
-            #format axis --------------------------------
-            wba_ax.set_xlim(x_lim) 
-            wba_ax.set_ylim(wba_lim)
-
-            if grid_row == 0 and grid_col == 0:
-                wba_ax.yaxis.set_ticks(wba_lim)
-                wba_ax.set_ylabel('L-R WBA (mV)')
-            else:
-                wba_ax.yaxis.set_ticks([])
-            wba_ax.xaxis.set_ticks([])
-          
-            #now plot stim -----------------------------------------------------------
-            stim_ax = plt.subplot(gs[grid_row+1,grid_col])
-
-            #assume the first trace of each is typical
-            y_stim = population_df.loc[:,(g,slice(None),slice(None),cnd,'ystim')]
-            stim_ax.plot(y_stim.iloc[:,0],color=black)
-
-            stim_ax.set_xlim(x_lim) 
-            stim_ax.set_ylim([0, 10]) 
-
-            if grid_row == 4 and grid_col == 0:
-                stim_ax.xaxis.set_ticks(x_lim)
-                stim_ax.set_xticklabels(['0','.4075'])
-                stim_ax.set_xlabel('Time (s)') 
-            else:
-                stim_ax.xaxis.set_ticks([])
-            stim_ax.yaxis.set_ticks([])
-            
-        i = i + 1
-        
-    #now annotate        
-    fig.text(.06,.8,'left',fontsize=14)
-    fig.text(.06,.53,'center',fontsize=14)
-    fig.text(.06,.25,'right',fontsize=14)
-    
-    fig.text(.22,.905,'22 l/v',fontsize=14)
-    fig.text(.495,.905,'44 l/v',fontsize=14)
-    fig.text(.775,.905,'88 l/v',fontsize=14)        
-
-    fig.text(.1,.95,two_genotypes[0],color='magenta',fontsize=18)
-    fig.text(.2,.95,two_genotypes[1],color='blue',fontsize=18)
-    plt.draw()
-    
-    saveas_path = '/Users/jamie/bin/figures/'
-    plt.savefig(saveas_path + title_txt + '_population_kir_looming_means_overlay_' 
-        + two_genotypes[0] + '_' + two_genotypes[1] + '.png',dpi=100)
-    #plt.close('all')
-
 def plot_pop_flight_over_time(all_fnames,protocol,title_txt='',wba_lim=[-1.5,1.5],if_save=True): 
         # clean this up --
         # first store all points by vectorizing
@@ -1326,30 +899,37 @@ def plot_pop_flight_over_time(all_fnames,protocol,title_txt='',wba_lim=[-1.5,1.5
                                     bbox_inches='tight',dpi=100) 
         
 def get_saccade_and_control_traces(saccades_dict):
-    # build a matrix of all traces with a saccade and their pre and post trials
-    # includes all filtering and baseline substraction while building the matricies 
-    # 
-    # input: saccades dictionary in format
-    # saccades_dict['03_30_0000']=[(0,0),(0,1)]  
-    # fly filename -- list of tupes with condition #, tr within the condition
-
-    all_saccades_structured = saccades_dict.values()
-    n_saccades = len(sum(all_saccades_structured,[]))
-    print n_saccades
-    max_t = 1000
+    # input -- dictionary in which the keys are the fly filenames
+    # and the values are arrays of tuples of the stimulus condition, trial
+    # within that condition/block, saccade start time, and saccade direction
+    # example -- saccades_dict['03_30_0000']=[(0,0,500,'L'),(0,1,325,'R')]  
+    #
+    # output -- two pandas data structures
+    # saccade_info: row=saccade id, columns = fly, cnd, tr, start time, direction
+    # saccade_wba_traces: row = times, columns are multilevel -- saccadeid 
+    #                                                           pre, saccade, post traces
+    #
+    #
+    path_name = '/Users/jamie/Dropbox/maimon lab - behavioral data/'
     
-    all_saccade_traces = pd.DataFrame(index=range(max_t),columns=range(n_saccades))
-    all_pre_traces = pd.DataFrame(index=range(max_t),columns=range(n_saccades))
-    all_post_traces = pd.DataFrame(index=range(max_t),columns=range(n_saccades))
+    n_saccades = len(sum(saccades_dict.values(),[])) # count the number of saccades
+    max_t = 1000
 
-    all_stim_types = pd.Series(index=range(n_saccades),dtype=int)
-    all_cell_names = pd.Series(index=range(n_saccades),dtype=str)
+    info_rows = ['fly','cnd','block','start_t','dir']
+    saccade_info = pd.DataFrame(index=info_rows,columns=range(n_saccades))
+    
+    iterables = [range(5),
+                ['pre','sacc','post']]
+    wba_columns = pd.MultiIndex.from_product(iterables,names=['saccade_id','trace']) 
+    saccade_and_control_traces = pd.DataFrame(index=range(max_t),columns=wba_columns)
+    
     
     baseline_window = range(0,150)
-    
     saccade_i = 0
+    filter_cutoff = 48
     
-    for f_name in saccades_dict.keys():
+    for f_name in saccades_dict.keys()[0:5]:
+        print f_name
     
         fly = Spot_Saccadic_Supression(path_name + '2015_'+ f_name)
         fly.process_fly(False)
@@ -1358,9 +938,13 @@ def get_saccade_and_control_traces(saccades_dict):
         stim_types = fly.unique_stim_types
     
         this_fly_saccades = saccades_dict[f_name]
-        for saccade_stim_tr in this_fly_saccades: 
-            stim_i = saccade_stim_tr[0]
-            stim_tr_i = saccade_stim_tr[1]
+        
+        for one_saccade_info in this_fly_saccades: 
+            
+            stim_i = one_saccade_info[0]
+            stim_tr_i = one_saccade_info[1]
+            
+            print stim_i
         
             this_stim_traces = all_traces.loc[:,('this_fly',slice(None),stim_types[stim_i],'lmr')]
             this_saccade_trace = this_stim_traces.iloc[0:max_t,(stim_tr_i)]
@@ -1370,32 +954,41 @@ def get_saccade_and_control_traces(saccades_dict):
             else:
                 this_prev_trace = this_stim_traces.iloc[0:max_t,(stim_tr_i-1)]
             
-            this_post_trace = this_stim_traces.iloc[0:max_t,(stim_tr_i+1)]
+            # add a check here 
+            this_post_trace = this_stim_traces.iloc[0:max_t,(stim_tr_i)] # *****************
             
             
-            filtered_saccade_trace = butter_lowpass_filter(this_saccade_trace,cutoff=48) 
+            filtered_saccade_trace = butter_lowpass_filter(this_saccade_trace,cutoff=filter_cutoff) 
             processed_saccade_trace = filtered_saccade_trace-\
                                       np.nanmean(filtered_saccade_trace[baseline_window])
         
-            filtered_prev_trace = butter_lowpass_filter(this_prev_trace,cutoff=48) 
+            filtered_prev_trace = butter_lowpass_filter(this_prev_trace,cutoff=filter_cutoff) 
             processed_prev_trace = filtered_prev_trace-\
                                       np.nanmean(filtered_prev_trace[baseline_window]) 
         
-            filtered_post_trace = butter_lowpass_filter(this_post_trace,cutoff=48) 
+            filtered_post_trace = butter_lowpass_filter(this_post_trace,cutoff=filter_cutoff) 
             processed_post_trace = filtered_prev_trace-\
                                       np.nanmean(filtered_post_trace[baseline_window])
         
-            all_saccade_traces.ix[:,saccade_i] = processed_saccade_trace
-            all_prev_traces.ix[:,saccade_i] = processed_prev_trace
-            all_post_traces.ix[:,saccade_i] = processed_post_trace
-        
-            all_stim_types[saccade_i] = stim_i
-            all_cell_names[saccade_i] = f_name
+            saccade_and_control_traces.ix[:,(saccade_i,'sacc')] = processed_saccade_trace
+            saccade_and_control_traces.ix[:,(saccade_i,'prev')] = processed_prev_trace
+            saccade_and_control_traces.ix[:,(saccade_i,'post')] = processed_post_trace
+            
+            saccade_info.ix['fly',saccade_i] = f_name
+            saccade_info.ix['cnd',saccade_i] = stim_i
+            saccade_info.ix['block',saccade_i] = stim_tr_i
+            saccade_info.ix['start_t',saccade_i] = one_saccade_info[2]
+            saccade_info.ix['dir',saccade_i] = one_saccade_info[3]
+            
             saccade_i = saccade_i + 1    
+    
+    return saccade_info, saccade_and_control_traces
 
 def calculate_saccade_latencies(all_saccade_traces):
     # find the onset time of spont saccades
     # inputs -- all_saccade_traces matrix of n_saccades x t
+    # this isn't very robust to multiple saccades or artifacts. 
+    # now just detecting by eye, but I should automate this.
     
     n_saccades = np.size(all_saccade_traces)
     
@@ -1412,7 +1005,7 @@ def calculate_saccade_latencies(all_saccade_traces):
             plt.plot(max_i,0,'go')
             plt.title(s)
     
-    spont_saccade_times[s] = max_i
+    return max_i
     
 def plot_saccade_traces_with_controls_y_offset(right_stim_sorted,left_stim_sorted,\
                         right_stim_sacc_t,left_stim_sacc_t): #what parameters do I need? 
