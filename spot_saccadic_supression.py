@@ -344,12 +344,19 @@ class Spot_Saccadic_Supression(Flight):
             plt.savefig(saveas_path + figure_txt + '_sacc_supression_wba_by_cnd_filtered_cutoff'+str(filter_cutoff)+'.png',\
                             bbox_inches='tight',dpi=100) 
 
-    def plot_wba_by_cnd_y_offset(self,title_txt='',long_static_spot=False,trs_to_mark=[],tr_range=slice(None),filter_cutoff=24,if_save=True): 
+    def plot_wba_by_cnd_y_offset(self,title_txt='',long_static_spot=False,diff_thres=0.01,trs_to_mark=[],\
+                    tr_range=slice(None),filter_cutoff=48,if_save=True): 
         # plot single trace of each of the four saccadic movement conditions
         
+        
+        if np.size(trs_to_mark):
+            saccade_stim_trs = [s[0:2] for s in trs_to_mark] 
+        else:
+            saccade_stim_trs = []
+            
         sampling_rate = 1000            # in hertz ********* move to fly info
         s_iti = .25 * sampling_rate      # ********* move to fly info
-        tr_offset = 5.5
+        tr_offset = 3.0 #5.5
         
         
         #baseline_win = range(0*sampling_rate,int(.125*sampling_rate)) 
@@ -414,18 +421,33 @@ class Spot_Saccadic_Supression(Flight):
                 
                 # check if stim,trial combination is in this list. if so, plot in 
                 # a thick line
-                if (col,i) in trs_to_mark:
-                    wba_ax.plot(filtered_wba_trace+i/tr_offset,color=this_color,linewidth=5)    
+                if (col,i) in saccade_stim_trs:
+                    wba_ax.plot(filtered_wba_trace+i/tr_offset,color=this_color,linewidth=5)  
+                    
+                    # also indicate the saccade direction and time
+                    # get saccade info
+                    
+                    saccade_i = [e_i for e_i, v in enumerate(trs_to_mark) if v[0] == col and v[1]==i][0]
+                
+                    saccade_t = trs_to_mark[saccade_i][2]
+                    saccade_dir = trs_to_mark[saccade_i][3]
+                    
+                    if saccade_dir == 'R':
+                        wba_ax.plot(saccade_t,filtered_wba_trace[saccade_t]+i/tr_offset,\
+                            marker='^',markersize=10,linestyle='None',color=black)
+                    elif saccade_dir == 'L':
+                        wba_ax.plot(saccade_t,filtered_wba_trace[saccade_t]+i/tr_offset,\
+                            marker='v',markersize=10,linestyle='None',color=black)
                 else:
                     wba_ax.plot(filtered_wba_trace+i/tr_offset,color=this_color,linewidth=1)    
                 
                 # now get potential saccade start times by differentiating the filtered
                 # trace and then applying and threshold
-                candidate_saccade_is = find_candidate_saccades(filtered_wba_trace,diff_thres=0.01)
                 
-                wba_ax.plot(candidate_saccade_is,filtered_wba_trace[candidate_saccade_is]+i/tr_offset,\
-                            marker='*',linestyle='None',color=black)
-                 
+                if diff_thres: # skip this if diff_thres is set to 0
+                    candidate_saccade_is = find_candidate_saccades(filtered_wba_trace,diff_thres=diff_thres)
+                    wba_ax.plot(candidate_saccade_is,filtered_wba_trace[candidate_saccade_is]+i/tr_offset,\
+                            marker='*',linestyle='None',color=grey)
                  
                 wba_ax.text(0,i/tr_offset,str(i),
                     verticalalignment='bottom', horizontalalignment='right',
@@ -470,7 +492,7 @@ class Spot_Saccadic_Supression(Flight):
                 this_ylim = all_wba_ax[col].get_ylim()
                 #all_wba_ax[col].set_ylim([-.5,this_ylim[1]*.975])
                 
-                all_wba_ax[col].set_ylim([-.5,(i+2)/tr_offset])
+                #all_wba_ax[col].set_ylim([-.5,(i+2)/tr_offset])
                 
                 #all_wba_ax[col].set_ylim([-.5,10.5])
                 #all_wba_ax[col].set_ylim([-.5,16])
