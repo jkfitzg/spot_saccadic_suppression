@@ -907,7 +907,7 @@ def get_saccade_and_control_traces(saccades_dict):
     # output -- two pandas data structures
     # saccade_info: row=saccade id, columns = fly, cnd, tr, start time, direction
     # saccade_wba_traces: row = times, columns are multilevel -- saccadeid 
-    #                                                           pre, saccade, post traces
+    #                                                           pre, saccade, post traces, sacc)_stim
     #
     #
     path_name = '/Users/jamie/Dropbox/maimon lab - behavioral data/'
@@ -919,7 +919,7 @@ def get_saccade_and_control_traces(saccades_dict):
     saccade_info = pd.DataFrame(index=info_rows,columns=range(n_saccades))
     
     iterables = [range(5),
-                ['pre','sacc','post']]
+                ['post','prev','sacc','stim']]
     wba_columns = pd.MultiIndex.from_product(iterables,names=['saccade_id','trace']) 
     saccade_and_control_traces = pd.DataFrame(index=range(max_t),columns=wba_columns)
     
@@ -928,7 +928,9 @@ def get_saccade_and_control_traces(saccades_dict):
     saccade_i = 0
     filter_cutoff = 48
     
-    for f_name in saccades_dict.keys()[0:5]:
+    print n_saccades
+    
+    for f_name in saccades_dict.keys():
         print f_name
     
         fly = Spot_Saccadic_Supression(path_name + '2015_'+ f_name)
@@ -948,6 +950,9 @@ def get_saccade_and_control_traces(saccades_dict):
         
             this_stim_traces = all_traces.loc[:,('this_fly',slice(None),stim_types[stim_i],'lmr')]
             this_saccade_trace = this_stim_traces.iloc[0:max_t,(stim_tr_i)]
+            
+            this_stim_pattern_traces = all_traces.loc[:,('this_fly',slice(None),stim_types[stim_i],'xstim')]
+            this_stim_trace = this_stim_pattern_traces.iloc[0:max_t,(stim_tr_i)]
         
             if stim_tr_i == 0:
                 this_prev_trace = this_stim_traces.iloc[0:max_t,(1)] #take trace following
@@ -970,9 +975,11 @@ def get_saccade_and_control_traces(saccades_dict):
             processed_post_trace = filtered_prev_trace-\
                                       np.nanmean(filtered_post_trace[baseline_window])
         
-            saccade_and_control_traces.ix[:,(saccade_i,'sacc')] = processed_saccade_trace
-            saccade_and_control_traces.ix[:,(saccade_i,'prev')] = processed_prev_trace
+            # ['post','prev','sacc','stim']] -- keep this lexsorted for multindexing
             saccade_and_control_traces.ix[:,(saccade_i,'post')] = processed_post_trace
+            saccade_and_control_traces.ix[:,(saccade_i,'prev')] = processed_prev_trace
+            saccade_and_control_traces.ix[:,(saccade_i,'sacc')] = processed_saccade_trace
+            saccade_and_control_traces.ix[:,(saccade_i,'stim')] = this_stim_trace
             
             saccade_info.ix['fly',saccade_i] = f_name
             saccade_info.ix['cnd',saccade_i] = stim_i
@@ -1007,69 +1014,10 @@ def calculate_saccade_latencies(all_saccade_traces):
     
     return max_i
     
-def plot_saccade_traces_with_controls_y_offset(right_stim_sorted,left_stim_sorted,\
-                        right_stim_sacc_t,left_stim_sacc_t): #what parameters do I need? 
-
-    for stim_subset,spont_sacc_ts,title in \
-        zip([right_stim_sorted,left_stim_sorted],\
-            [right_stim_sacc_t,left_stim_sacc_t],
-            ['Right','Left']): 
-
-        # plot right stim ________________________________________________
-        # get a colormap
-        n_stim = len(stim_subset)
-        n_colors = n_stim
-        cmap = plt.cm.get_cmap('spectral')
-        cNorm = colors.Normalize(0,n_colors)
-        scalarMap = cm.ScalarMappable(norm=cNorm,cmap=cmap)
-
-        # now combine the traces in a single plot
-        fig = plt.figure()
-        saccade_baseline_window = range(585,620)
-        saccade_window = range(665,700)
-
-        plt.ylim([-.5,.5])
-        plt.axhline()
-        plt.axvline(x=0)
-    
-        for i,s,this_spont_sacc_t in zip(range(n_stim),\
-                                         stim_subset,spont_sacc_ts): #range(n_saccades):
-            this_color = scalarMap.to_rgba(i)
-
-            this_saccade_mean = np.mean(all_saccade_traces.ix[saccade_window,s])
-            this_control_mean = np.mean(all_control_traces.ix[saccade_window,s])
-        
-            this_saccade_pre_mean = np.mean(all_saccade_traces.ix[saccade_baseline_window,s])
-            this_control_pre_mean = np.mean(all_control_traces.ix[saccade_baseline_window,s])
-        
-            sacc_diff = this_saccade_mean#-this_saccade_pre_mean
-            
-
-            plt.plot(this_spont_sacc_t-500,sacc_diff,'.',markersize=10,color=magenta)
-        
-        
-        plt.ylim([-.5,.5])    
-        plt.xlabel('Approximate time from saccade start (ms)')
-        plt.ylabel('L-R WBA in saccade window - pre saccade(V)')
-        plt.title(title+' spot')
-        saveas_path = '/Users/jamie/bin/figures/'
-        plt.savefig(saveas_path+' spot saccade v. spont sacc time.png',\
-                    bbox_inches='tight',dpi=100)     
-
-    
-
-def plot_spot_saccade_versus_spont_saccade_time():  #specify all input arguments
-    # now plot the saccade time v. 
-    # mean response in a saccade window - mean in window just before
-    # separately for left and right  spots
-    # next consider direction of saccade x direction of spot
-    # need to consider absolute displacement? 
-    # now with approximate saccade onset times
-    # replot the saccade traces v. controls 
-    # within the same stimulus types
-    # this function is still a work in progress
-    # ** important -- I need to separate the directions of the saccades
-    
+def plot_saccade_traces_with_controls_y_offset_v1(right_stim_sorted,left_stim_sorted,\
+                        right_stim_sacc_t,left_stim_sacc_t): 
+    # code fragment. does not yet run.
+     
     spont_saccade_times.sort()
     
     right_stim = np.hstack([np.where(all_stim_types == 0)[0],\
@@ -1126,4 +1074,182 @@ def plot_spot_saccade_versus_spont_saccade_time():  #specify all input arguments
         saveas_path = '/Users/jamie/bin/figures/'
         plt.savefig(saveas_path+ title+' spot saccade traces - sorted.png',\
                     bbox_inches='tight',dpi=100)
+                         
+def plot_spot_saccade_versus_spont_saccade_time():  
+    # specify all input arguments
+    # now plot the saccade time v. 
+    # mean response in a saccade window - mean in window just before
+    # separately for left and right  spots
+    # next consider direction of saccade x direction of spot
+    # need to consider absolute displacement? 
+    # now with approximate saccade onset times
+    # replot the saccade traces v. controls 
+    # within the same stimulus types
+    # this function is still a work in progress
+    # ** important -- I need to separate the directions of the saccades
 
+        fig = plt.figure()
+        saccade_baseline_window = range(585,620)
+        saccade_window = range(665,700)
+
+        plt.ylim([-.5,.5])
+        plt.axhline()
+        plt.axvline(x=0)
+
+        for i,s,this_spont_sacc_t in zip(range(n_stim),\
+                                         stim_subset,spont_sacc_ts): #range(n_saccades):
+            this_color = scalarMap.to_rgba(i)
+
+            this_saccade_mean = np.mean(all_saccade_traces.ix[saccade_window,s])
+            this_control_mean = np.mean(all_control_traces.ix[saccade_window,s])
+    
+            this_saccade_pre_mean = np.mean(all_saccade_traces.ix[saccade_baseline_window,s])
+            this_control_pre_mean = np.mean(all_control_traces.ix[saccade_baseline_window,s])
+    
+            sacc_diff = this_saccade_mean#-this_saccade_pre_mean
+        
+            plt.plot(this_spont_sacc_t-500,sacc_diff,'.',markersize=10,color=magenta)
+    
+        plt.ylim([-.5,.5])    
+        plt.xlabel('Approximate time from saccade start (ms)')
+        plt.ylabel('L-R WBA in saccade window - pre saccade(V)')
+        plt.title(title+' spot')
+        saveas_path = '/Users/jamie/bin/figures/'
+        plt.savefig(saveas_path+' spot saccade v. spont sacc time.png',\
+                    bbox_inches='tight',dpi=100)     
+
+                 
+def plot_saccade_traces_pre_pos_y_offset(saccade_info, saccade_and_control_traces): 
+    # for each condition, show saccades to the left and to the right
+    # + their previous and post traces in finer lines
+    #
+    # both with a y-offset
+    # and on the bottom with no y-offset and an average
+    
+    stim_cnds = range(4)
+    stim_titles = ['Spot on right, front->back','Spot on right, back->front',\
+                    'Spot on left, back->front','Spot on left, front->back']
+    
+    spont_sacc_dir = ['L','R']    
+    direction_titles =['left','right']
+    
+    overlaid_offset = 1.5
+
+    for stim in stim_cnds: #3,]: #
+        
+        # make a figure -- three rows x two columns ______________________________________
+        # rows -- y-offset wba traces, stim, overlays wba traces + mean
+        # columns -- left and right spontaneous turns
+        
+        n_cols = 2 
+        n_rows = 3
+        
+        gs = gridspec.GridSpec(n_rows,n_cols,height_ratios=[.65,.1,1])
+        fig = plt.figure(figsize=(14.5, 14.5))
+        gs.update(wspace=0.1, hspace=0.025) # set the spacing between axes. 
+        
+        # store all subplots for formatting later           
+        all_offset_wba_ax = np.empty(n_cols,dtype=plt.Axes)
+        all_stim_ax = np.empty(n_cols,dtype=plt.Axes)
+        all_overlaid_wba_ax = np.empty(n_cols,dtype=plt.Axes)
+        
+        # find all saccades of the stimulus type ______________________________________
+        this_stim_trs = np.where(saccade_info.ix['cnd',:] == stim)[0]
+        
+        for dir in spont_sacc_dir:
+        
+            # create subplots ________________________________________________________              
+            if dir == 'L':
+                offset_wba_ax  = plt.subplot(gs[0,0]) 
+                stim_ax = plt.subplot(gs[1,0],sharex=offset_wba_ax)
+                overlaid_wba_ax = plt.subplot(gs[2,0],sharex=offset_wba_ax)   
+                
+                all_offset_wba_ax[0] = offset_wba_ax
+                all_stim_ax[0] = stim_ax
+                all_overlaid_wba_ax[0] = overlaid_wba_ax   
+            else:
+                offset_wba_ax  = plt.subplot(gs[0,1], sharex=all_offset_wba_ax[0],  sharey=all_offset_wba_ax[0]) 
+                stim_ax = plt.subplot(gs[1,1], sharex=all_offset_wba_ax[0], sharey=all_stim_ax[0])    
+                overlaid_wba_ax = plt.subplot(gs[2,1], sharex=all_offset_wba_ax[0], sharey=all_overlaid_wba_ax[0])    
+    
+                all_offset_wba_ax[1] = offset_wba_ax
+                all_stim_ax[1] = stim_ax
+                all_overlaid_wba_ax[1] = overlaid_wba_ax        
+        
+            offset_wba_ax.set_title(stim_titles[stim]+' '+dir+' spont sacc')
+            
+            # find all saccades of this direction type
+            this_dir_trs = np.where(saccade_info.ix['dir',:] == dir)[0]
+        
+            # intersect with the same stimulus type
+            this_stim_dir_trs = np.intersect1d(this_stim_trs,this_dir_trs)
+
+            # get the number of saccades here, make a color map
+            n_this_saccades = len(this_stim_dir_trs)    
+            
+            # get a colormap
+            n_colors = n_this_saccades
+            cmap = plt.cm.get_cmap('spectral')
+            cNorm = colors.Normalize(0,n_colors)
+            scalarMap = cm.ScalarMappable(norm=cNorm,cmap=cmap)
+
+            # sort saccades by onset time -- can do this later
+            #spont_saccade_times.sort()
+            #right_stim_sacc_t = spont_saccade_times[right_stim].order().values
+    
+            # loop through all saccades
+            for i in range(n_this_saccades): 
+                
+                # map the saccade index to the saccade id 
+                s = this_stim_dir_trs[i]
+                this_color = scalarMap.to_rgba(i)
+
+                this_saccade_trace = saccade_and_control_traces.ix[:,(s,'sacc')]
+                this_stim_trace = saccade_and_control_traces.ix[:,(s,'stim')]
+                this_prev_trace = saccade_and_control_traces.ix[:,(s,'prev')]
+                this_post_trace = saccade_and_control_traces.ix[:,(s,'post')]
+
+                # plot saccade traces with their previous traces 
+                offset_wba_ax.plot(this_saccade_trace+i/2.0,color=this_color,linewidth=3)
+                offset_wba_ax.plot(this_prev_trace+i/2.0,color=this_color,linewidth=1)
+                
+                # plot the stimulus traces
+                stim_ax.plot(this_stim_trace,color=this_color)         
+            
+                # now show overlaid traces     
+                
+                overlaid_wba_ax.plot(this_prev_trace-overlaid_offset,color=blue,linewidth=1)
+                overlaid_wba_ax.plot(this_saccade_trace,color=magenta,linewidth=1)
+                overlaid_wba_ax.plot(this_post_trace+overlaid_offset,color=black,linewidth=1)
+                     
+                # give pre and post-offset
+            
+            # now plot the means here
+            this_dir_trs_all_traces = saccade_and_control_traces.loc[:,this_stim_dir_trs.tolist()]
+            
+            prev_traces = this_dir_trs_all_traces.loc[:,(slice(None),'prev')].values
+            prev_means = np.nanmean(prev_traces,axis=1)
+            overlaid_wba_ax.plot(prev_means-overlaid_offset,color=blue,linewidth=3)
+            
+            saccade_traces = this_dir_trs_all_traces.loc[:,(slice(None),'sacc')].values
+            saccade_means = np.nanmean(saccade_traces,axis=1)
+            overlaid_wba_ax.plot(saccade_means,color=magenta,linewidth=3)
+
+            post_traces = this_dir_trs_all_traces.loc[:,(slice(None),'post')].values
+            post_means = np.nanmean(post_traces,axis=1)
+            overlaid_wba_ax.plot(post_means+overlaid_offset,color=black,linewidth=3)
+            
+
+            all_offset_wba_ax[0].set_ylim([-1,6])
+            all_stim_ax[0].set_ylim([0,10])
+            #all_overlaid_wba_ax[0].set_ylim([-1.5,1.5])
+
+            # show turn window
+            #plt.axvspan(620, 770, facecolor='black', alpha=0.5)             
+            plt.xlabel('Time (ms)')
+            plt.ylabel('L-R WBA (V)+tr offset')
+            #plt.title(title+' spot saccade traces, sorted by spont saccade')
+        
+        saveas_path = '/Users/jamie/bin/figures/'
+        #plt.savefig(saveas_path+ title+' spot saccade traces - sorted.png',\
+        #            bbox_inches='tight',dpi=100)
