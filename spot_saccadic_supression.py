@@ -202,7 +202,7 @@ class Spot_Saccadic_Supression(Flight):
         
         
             
-    def plot_wba_by_cnd(self,title_txt='',long_static_spot=False,wba_lim=[-1.5,1.5],filter_cutoff=12,tr_range=slice(None), if_save=True): 
+    def plot_wba_by_cnd(self,title_txt='',long_static_spot=False,wba_lim=[-1.5,1.5],filter_cutoff=48,tr_range=slice(None), if_save=True): 
         # plot single trace of each of the four saccadic movement conditions
         
         sampling_rate = 1000            # in hertz ********* move to fly info
@@ -344,7 +344,7 @@ class Spot_Saccadic_Supression(Flight):
             plt.savefig(saveas_path + figure_txt + '_sacc_supression_wba_by_cnd_filtered_cutoff'+str(filter_cutoff)+'.png',\
                             bbox_inches='tight',dpi=100) 
 
-    def plot_wba_by_cnd_y_offset(self,title_txt='',long_static_spot=False,diff_thres=0.01,trs_to_mark=[],\
+    def plot_wba_by_cnd_y_offset(self,title_txt='',long_static_spot=False,diff_thres=0.015,trs_to_mark=[],\
                     tr_range=slice(None),filter_cutoff=48,if_save=True): 
         # plot single trace of each of the four saccadic movement conditions
         
@@ -490,7 +490,7 @@ class Spot_Saccadic_Supression(Flight):
             if col == 0:           
                 all_wba_ax[col].set_ylabel('L-R WBA (V)',fontsize=10)
                 this_ylim = all_wba_ax[col].get_ylim()
-                #all_wba_ax[col].set_ylim([-.5,this_ylim[1]*.975])
+                all_wba_ax[col].set_ylim([-.5,this_ylim[1]*.975])
                 
                 #all_wba_ax[col].set_ylim([-.5,(i+2)/tr_offset])
                 
@@ -908,8 +908,9 @@ def get_saccade_and_control_traces(saccades_dict):
     # saccade_info: row=saccade id, columns = fly, cnd, tr, start time, direction
     # saccade_wba_traces: row = times, columns are multilevel -- saccadeid 
     #                                                           pre, saccade, post traces, sacc)_stim
+    # traces are filtered and baseline subtracted
     #
-    #
+    
     path_name = '/Users/jamie/Dropbox/maimon lab - behavioral data/'
     
     n_saccades = len(sum(saccades_dict.values(),[])) # count the number of saccades
@@ -932,6 +933,7 @@ def get_saccade_and_control_traces(saccades_dict):
     
     for f_name in saccades_dict.keys():
     
+        print f_name
         fly = Spot_Saccadic_Supression(path_name + '2015_'+ f_name)
         fly.process_fly(False)
     
@@ -956,10 +958,13 @@ def get_saccade_and_control_traces(saccades_dict):
             else:
                 this_prev_trace = this_stim_traces.iloc[0:max_t,(stim_tr_i-1)]
             
-            # add a check here 
-            this_post_trace = this_stim_traces.iloc[0:max_t,(stim_tr_i)] # *****************
-            
-            
+            # I'm assuming that I don't take saccades from the last trace. 
+            # later, add an error catch here
+            try:
+                this_post_trace = this_stim_traces.iloc[0:max_t,(stim_tr_i+1)] 
+            except:
+                this_post_trace = this_stim_traces.iloc[0:max_t,(stim_tr_i-1)] 
+                
             filtered_saccade_trace = butter_lowpass_filter(this_saccade_trace,cutoff=filter_cutoff) 
             processed_saccade_trace = filtered_saccade_trace-\
                                       np.nanmean(filtered_saccade_trace[baseline_window])
@@ -969,7 +974,7 @@ def get_saccade_and_control_traces(saccades_dict):
                                       np.nanmean(filtered_prev_trace[baseline_window]) 
         
             filtered_post_trace = butter_lowpass_filter(this_post_trace,cutoff=filter_cutoff) 
-            processed_post_trace = filtered_prev_trace-\
+            processed_post_trace = filtered_post_trace-\
                                       np.nanmean(filtered_post_trace[baseline_window])
         
             # ['post','prev','sacc','stim']] -- keep this lexsorted for multindexing
@@ -1278,7 +1283,7 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
     n_cols = 2 
     n_rows = 3
         
-    gs = gridspec.GridSpec(n_rows,n_cols,height_ratios=[.5,.05,1])
+    gs = gridspec.GridSpec(n_rows,n_cols,height_ratios=[1,.05,.5])
     fig = plt.figure(figsize=(14.5, 14.5))
     gs.update(wspace=0.1, hspace=0.025) # set the spacing between axes. 
      
@@ -1321,6 +1326,11 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
         
         offset_wba_ax.set_title('Spot on the ' + stim_dir)      
 
+        # show turn window
+        offset_wba_ax.axvspan(620, 770, facecolor='black', alpha=0.5)
+        stim_ax.axvspan(620, 770, facecolor='black', alpha=0.5)
+        overlaid_wba_ax.axvspan(620, 770, facecolor='black', alpha=0.5)
+
         # intersect with the same stimulus type
         this_stim_dir_trs = this_stim_trs  # just combine all directions of saccades for now
         
@@ -1329,8 +1339,8 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
         
         # now just select saccades that in this time range
         saccade_turn_t = 640
-        this_min_t  = -200+saccade_turn_t
-        this_max_t = -50+saccade_turn_t
+        this_min_t  = -600+saccade_turn_t
+        this_max_t = -400+saccade_turn_t
         
         saccades_in_t1 = np.where(this_stim_saccade_start_ts > this_min_t)[0]
         saccades_in_t2 = np.where(this_stim_saccade_start_ts < this_max_t)[0]
@@ -1370,6 +1380,14 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
             stim_ax.plot(this_stim_trace,color=this_color)         
     
             # now show overlaid traces     
+            
+            sub_window = range(520,570)
+            
+            this_prev_trace = this_prev_trace - np.nanmean(this_prev_trace[sub_window])
+            this_saccade_trace = this_saccade_trace - np.nanmean(this_saccade_trace[sub_window])
+            this_post_trace = this_post_trace - np.nanmean(this_post_trace[sub_window])
+            
+            
             overlaid_wba_ax.plot(this_prev_trace-overlaid_offset,color=blue,linewidth=.5)
             overlaid_wba_ax.plot(this_saccade_trace,color=magenta,linewidth=.5)
             overlaid_wba_ax.plot(this_post_trace+overlaid_offset,color=black,linewidth=.5)
@@ -1380,24 +1398,23 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
         this_dir_trs_all_traces = saccade_and_control_traces.loc[:,this_stim_t_saccades.tolist()]
     
         prev_traces = this_dir_trs_all_traces.loc[:,(slice(None),'prev')].values
-        prev_means = np.nanmean(prev_traces,axis=1)
+        prev_means = np.nanmean(prev_traces,axis=1) - np.nanmean(prev_traces[sub_window])
         overlaid_wba_ax.plot(prev_means-overlaid_offset,color=blue,linewidth=3)
     
         saccade_traces = this_dir_trs_all_traces.loc[:,(slice(None),'sacc')].values
-        saccade_means = np.nanmean(saccade_traces,axis=1)
+        saccade_means = np.nanmean(saccade_traces,axis=1) - np.nanmean(saccade_traces[sub_window])
         overlaid_wba_ax.plot(saccade_means,color=magenta,linewidth=3)
 
         post_traces = this_dir_trs_all_traces.loc[:,(slice(None),'post')].values
-        post_means = np.nanmean(post_traces,axis=1)
+        post_means = np.nanmean(post_traces,axis=1) - np.nanmean(post_traces[sub_window])
         overlaid_wba_ax.plot(post_means+overlaid_offset,color=black,linewidth=3)
     
 
-        #all_offset_wba_ax[0].set_ylim([-1,17])
-        all_stim_ax[0].set_ylim([0,10])
-        #all_overlaid_wba_ax[0].set_ylim([-1.5,1.5])
+        #all_offset_wba_ax[1].set_ylim([-1,17])
+        #all_stim_ax[1].set_ylim([0,10])
+        #all_overlaid_wba_ax[1].set_ylim([-1.5,1.5])
 
-        # show turn window
-        #plt.axvspan(620, 770, facecolor='black', alpha=0.5)             
+                     
         plt.xlabel('Time (ms)')
         plt.ylabel('L-R WBA (V)+tr offset')
         #plt.title(title+' spot saccade traces, sorted by spont saccade')
