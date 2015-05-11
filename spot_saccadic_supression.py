@@ -22,7 +22,7 @@ import scipy as sp
 #---------------------------------------------------------------------------#
 
 class Flight():  
-    def __init__(self, fname, protocol=''):
+    def __init__(self, fname, protocol='wing beat analyzer'):
         if fname.endswith('.abf'):
             self.basename = ''.join(fname.split('.')[:-1])
             self.fname = fname
@@ -31,33 +31,56 @@ class Flight():
             self.fname = self.basename + '.abf'  #check here for fname type 
         
         self.protocol = protocol
+        
+        if self.protocol == 'wing beat analyzer':
+            self.sampling_rate = 1000
+        elif self.protocol == 'optical tracking':
+            self.sampling_rate = 10000
                   
-    def open_abf(self,exclude_indicies=[]):  
-        abf = read_abf(self.fname)
-        # added features to exclude specific time intervals
-        n_indicies = np.size(abf['stim_x']) #assume all channels have the same sample #s 
-        inc_indicies = np.setdiff1d(range(n_indicies),exclude_indicies);
+    def open_abf(self,exclude_indicies=[]): 
+        abf = read_abf(self.fname)              
+        
+        if self.protocol == 'wing beat analyzer': #different channels here, although same file structures
+            n_indicies = np.size(abf['stim_x'])      #assume all channels have the same sample #s 
+            inc_indicies = np.setdiff1d(range(n_indicies),exclude_indicies);
                    
-        self.xstim = np.array(abf['stim_x'])[inc_indicies]
-        self.ystim = np.array(abf['stim_y'])[inc_indicies]
+            self.xstim = np.array(abf['stim_x'])[inc_indicies]
+            self.ystim = np.array(abf['stim_y'])[inc_indicies]
 
-        self.samples = np.arange(self.xstim.size)  #this is adjusted
-        self.t = self.samples/float(1000) # sampled at 10,000 hz -- encode here?
- 
-        lwa_v = np.array(abf['l_wba'])[inc_indicies]
-        rwa_v = np.array(abf['r_wba'])[inc_indicies]
+            # no wing processing
+            self.lwa = np.array(abf['l_wba'])[inc_indicies]
+            self.rwa = np.array(abf['r_wba'])[inc_indicies]
         
-        #store the raw wing beat amplitude for checking for nonflight
-        self.lwa = lwa_v
-        self.rwa = rwa_v
+            self.ao = np.array(abf['ao1'])[inc_indicies]
         
+            self.vm = np.nan*np.ones_like(self.lwa)    #empty, although this is a hack. **
+            self.tach = np.array([])              #empty
+            
+        elif self.protocol == 'optical tracking':
+            n_indicies = np.size(abf['x_ch']) #assume all channels have the same sample #s 
+            inc_indicies = np.setdiff1d(range(n_indicies),exclude_indicies);
+               
+            self.xstim = np.array(abf['x_ch'])[inc_indicies]
+            self.ystim = np.array(abf['y_ch'])[inc_indicies]
+
+            # process wing signal
+            lwa_v = np.array(abf['wba_l'])[inc_indicies]
+            rwa_v = np.array(abf['wba_r'])[inc_indicies]    
+            self.lwa = process_wings(lwa_v)
+            self.rwa = process_wings(rwa_v)
+    
+            self.ao = np.array(abf['patid'])[inc_indicies]
+    
+            self.vm = np.array(abf['vm'])[inc_indicies] - 13 #offset for bridge potential
+            self.tach = np.array(abf['tach'])[inc_indicies]
+        
+        # common to both versions    
+        self.samples = np.arange(self.xstim.size)  
+        self.t = self.samples/float(self.sampling_rate)
+
         self.lmr = self.lwa - self.rwa
         
-        self.wbf = np.array(abf['wbf'])
-        if 'in 10' in abf:
-            self.ao = np.array(abf['in 10'])
-        else:
-            self.ao = np.array(abf['ao1'])
+        self.iti_s = .5         # later change this for the 5 ms iti trials
             
     def _is_flying(self, start_i, stop_i, wba_thres=0.5, flying_time_thresh=0.95):  #fix this critera
         #check that animal is flying 
@@ -202,11 +225,16 @@ class Spot_Saccadic_Supression(Flight):
         
         
             
-    def plot_wba_by_cnd(self,title_txt='',long_static_spot=False,wba_lim=[-1.5,1.5],filter_cutoff=48,tr_range=slice(None), if_save=True): 
-        # plot single trace of each of the four saccadic movement conditions
+    def plot_wba_by_cnd(self,title_txt='',long_static_spot=False,wba_lim=[-1.5,1.5],
+            filter_cutoff=48,tr_range=slice(None), if_save=True): 
+        # plot stacked single traces of each of the four saccadic movement conditions
         
-        sampling_rate = 1000            # in hertz ********* move to fly info
-        s_iti = .25 * sampling_rate      # ********* move to fly info
+        if self.protocol == 'optical tracking':
+            wba_lim = [-30,30]
+            filter_cutoff = 16
+        
+        sampling_rate = self.sampling_rate  
+        s_iti = .25 * sampling_rate    
         
         baseline_win = range(0*sampling_rate,int(.125*sampling_rate)) 
         
@@ -251,7 +279,7 @@ class Spot_Saccadic_Supression(Flight):
             all_wba_ax[col] = wba_ax
             all_stim_ax[col] = stim_ax
     
-            # loop single trials and plot all signals ________________________________
+            # loop through single trials and plot all signals ________________________________
             for tr, i in zip(this_cnd_trs,range(n_cnd_trs)):
 
                 this_color = this_color = scalarMap.to_rgba(i)     
@@ -262,17 +290,17 @@ class Spot_Saccadic_Supression(Flight):
                 baseline = np.nanmean(wba_trace[baseline_win])
                 wba_trace = wba_trace - baseline  
      
-                non_nan_i = np.where(~np.isnan(wba_trace))[0] 
-                filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=filter_cutoff)
+                non_nan_i = np.where(~np.isnan(wba_trace))[0] # trials are buffered by nans at the end
+                filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=filter_cutoff,fs=self.sampling_rate)
                  
                 wba_ax.plot(filtered_wba_trace,color=this_color)
                 #wba_ax.plot(wba_trace,color=this_color)
                
-                #now plot stimulus traces ____________________________________________
+                # plot stimulus traces ____________________________________________
                 stim_ax.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'xstim')],color=this_color)
                 
                 
-            # now plot the condition mean ____________________________________________
+            # plot the condition mean ____________________________________________
             mean_wba_trace = np.nanmean(all_fly_traces.loc[:,('this_fly',this_cnd_trs,cnd,'lmr')],1)
             baseline = np.nanmean(mean_wba_trace[baseline_win])
             mean_wba_trace = mean_wba_trace - baseline  
@@ -344,7 +372,7 @@ class Spot_Saccadic_Supression(Flight):
             plt.savefig(saveas_path + figure_txt + '_sacc_supression_wba_by_cnd_filtered_cutoff'+str(filter_cutoff)+'.png',\
                             bbox_inches='tight',dpi=100) 
 
-    def plot_wba_by_cnd_y_offset(self,title_txt='',long_static_spot=False,diff_thres=0.015,trs_to_mark=[],\
+    def plot_wba_by_cnd_y_offset(self,title_txt='',long_static_spot=False,diff_thres=0.025,trs_to_mark=[],\
                     tr_range=slice(None),filter_cutoff=48,if_save=True): 
         # plot single trace of each of the four saccadic movement conditions
         
@@ -354,14 +382,17 @@ class Spot_Saccadic_Supression(Flight):
         else:
             saccade_stim_trs = []
             
-        sampling_rate = 1000            # in hertz ********* move to fly info
+        sampling_rate = self.sampling_rate
         s_iti = .25 * sampling_rate      # ********* move to fly info
         tr_offset = 3.0 #5.5
         
+        if self.protocol == 'optical tracking':
+            filter_cutoff = 16
+            tr_offset = 1.0/10
+            diff_thres=10
         
         #baseline_win = range(0*sampling_rate,int(.125*sampling_rate)) 
         baseline_win = range(0*sampling_rate,int(.1*sampling_rate)) 
-        
         
         #get all traces and detect saccades ______________________________________________
         all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=False)
@@ -417,7 +448,7 @@ class Spot_Saccadic_Supression(Flight):
                 #wba_ax.plot(wba_trace+i/2.0,color=this_color)
                
                 non_nan_i = np.where(~np.isnan(wba_trace))[0] 
-                filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=filter_cutoff)
+                filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=filter_cutoff,fs=self.sampling_rate)
                 
                 # check if stim,trial combination is in this list. if so, plot in 
                 # a thick line
@@ -477,6 +508,8 @@ class Spot_Saccadic_Supression(Flight):
             
             if long_static_spot:
                 all_wba_ax[col].axvspan(1630, 1730, facecolor='black', alpha=0.5)    
+            elif self.protocol == 'optical tracking':
+                all_wba_ax[col].axvspan(6300, 7300, facecolor='black', alpha=0.5)    
             else:
                 all_wba_ax[col].axvspan(630, 730, facecolor='black', alpha=0.5)    
                 
@@ -488,9 +521,18 @@ class Spot_Saccadic_Supression(Flight):
             all_wba_ax[col].set_title(self.stim_types_labels[cnds_to_plot[col]],fontsize=10)
             
             if col == 0:           
-                all_wba_ax[col].set_ylabel('L-R WBA (V)',fontsize=10)
+                
+                if self.protocol == 'optical tracking':
+                    all_wba_ax[col].set_ylabel('L-R WBA (degrees) + offset',fontsize=10)
+                else:
+                    all_wba_ax[col].set_ylabel('L-R WBA (V) + offset',fontsize=10)
+                
                 this_ylim = all_wba_ax[col].get_ylim()
-                all_wba_ax[col].set_ylim([-.5,this_ylim[1]*.975])
+                
+                if self.protocol == 'optical tracking':
+                    all_wba_ax[col].set_ylim([-12.5,this_ylim[1]*.85])
+                else:
+                    all_wba_ax[col].set_ylim([-.5,this_ylim[1]*.975])
                 
                 #all_wba_ax[col].set_ylim([-.5,(i+2)/tr_offset])
                 
@@ -526,6 +568,9 @@ class Spot_Saccadic_Supression(Flight):
                 all_stim_ax[col].tick_params(labelbottom='off')
         
         figure_txt = title_txt
+        if self.protocol == 'optical tracking':
+            figure_txt = figure_txt + ' _ strokelitude'
+        
         fig.text(.2,.95,figure_txt,fontsize=18) 
        
         plt.draw()
@@ -712,6 +757,16 @@ def read_abf(abf_filename):
 
         return analog_signals_dict
         
+def process_wings(raw_wings):
+    #here shift wing signal -12 ms in time, filling end with nans
+    shifted_wings = np.zeros_like(raw_wings)
+    shifted_wings[0:-12] = raw_wings[12:]
+    shifted_wings[-11:] = raw_wings[-1]   
+    
+    #now multiply to convert volts to degrees
+    processed_wings = -45 + shifted_wings*33.75
+    return processed_wings
+        
 def find_candidate_saccades(filtered_lmr_trace,diff_thres=0.005):
     # return the index positions within filtered_lmr_trace of candidate 
     # saccades, as shown by high derivates
@@ -785,7 +840,7 @@ def butter_lowpass(cutoff, fs, order=5):
     b, a = sp.signal.butter(order, normal_cutoff, btype='low', analog=False)
     return b, a
 
-def butter_lowpass_filter(data, cutoff=12, fs=2000, order=5): #how does the order change?
+def butter_lowpass_filter(data, cutoff=12, fs=1000, order=5): #how does the order change?
     b, a = butter_lowpass(cutoff, fs, order)
     #y = sp.signal.lfilter(b, a, data) #what's the difference here? 
     y = sp.signal.filtfilt(b, a, data)
@@ -898,11 +953,13 @@ def plot_pop_flight_over_time(all_fnames,protocol,title_txt='',wba_lim=[-1.5,1.5
                 plt.savefig(saveas_path + title_txt + 'population_turn_adaptation.png',\
                                     bbox_inches='tight',dpi=100) 
         
-def get_saccade_and_control_traces(saccades_dict):
+def get_saccade_and_control_traces(saccades_dict,filter_fs=1000):
     # input -- dictionary in which the keys are the fly filenames
     # and the values are arrays of tuples of the stimulus condition, trial
     # within that condition/block, saccade start time, and saccade direction
-    # example -- saccades_dict['03_30_0000']=[(0,0,500,'L'),(0,1,325,'R')]  
+    # example -- saccades_dict['03_30_0000']=[(0,0,500,'L'),(0,1,325,'R')] 
+    # filter_fs -- assumes the same sampling rate for all flies in dictionary.
+    #              1,000 for wing beat analyzer, 10,000 for strokelitude
     #
     # output -- two pandas data structures
     # saccade_info: row=saccade id, columns = fly, cnd, tr, start time, direction
@@ -933,7 +990,7 @@ def get_saccade_and_control_traces(saccades_dict):
     
     for f_name in saccades_dict.keys():
     
-        print f_name
+        #print f_name
         fly = Spot_Saccadic_Supression(path_name + '2015_'+ f_name)
         fly.process_fly(False)
     
@@ -965,15 +1022,15 @@ def get_saccade_and_control_traces(saccades_dict):
             except:
                 this_post_trace = this_stim_traces.iloc[0:max_t,(stim_tr_i-1)] 
                 
-            filtered_saccade_trace = butter_lowpass_filter(this_saccade_trace,cutoff=filter_cutoff) 
+            filtered_saccade_trace = butter_lowpass_filter(this_saccade_trace,cutoff=filter_cutoff,fs=filter_fs) 
             processed_saccade_trace = filtered_saccade_trace-\
                                       np.nanmean(filtered_saccade_trace[baseline_window])
         
-            filtered_prev_trace = butter_lowpass_filter(this_prev_trace,cutoff=filter_cutoff) 
+            filtered_prev_trace = butter_lowpass_filter(this_prev_trace,cutoff=filter_cutoff,fs=filter_fs)  
             processed_prev_trace = filtered_prev_trace-\
                                       np.nanmean(filtered_prev_trace[baseline_window]) 
         
-            filtered_post_trace = butter_lowpass_filter(this_post_trace,cutoff=filter_cutoff) 
+            filtered_post_trace = butter_lowpass_filter(this_post_trace,cutoff=filter_cutoff,fs=filter_fs)  
             processed_post_trace = filtered_post_trace-\
                                       np.nanmean(filtered_post_trace[baseline_window])
         
@@ -1127,6 +1184,10 @@ def plot_saccade_traces_pre_pos_y_offset(saccade_info, saccade_and_control_trace
     #
     # both with a y-offset
     # and on the bottom with no y-offset and an average
+    #
+    # April 30 2015 -- rewriting to show the flash responses
+    # also store the ao signal here
+    #
     
     stim_cnds = range(4)
     stim_titles = ['Spot on right, front->back','Spot on right, back->front',\
@@ -1292,12 +1353,15 @@ def plot_saccade_traces_pre_pos_y_offset(saccade_info, saccade_and_control_trace
                     bbox_inches='tight',dpi=100)
         
 def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_control_traces,
-                                min_pre_saccade_t,max_pre_saccade_t): 
+                                min_pre_saccade_t,max_pre_saccade_t,plot_by_stim=True): 
     # for each condition, show saccades to the left and to the right
     # + their previous and post traces in finer lines
     #
     # both with a y-offset
     # and on the bottom with no y-offset and an average
+    #
+    # modify this to allow sorting by spot position (two)
+    # or by stimulus (four)
     
     stim_cnds = range(4)
     stim_titles = ['Spot on right, front->back','Spot on right, back->front',\
@@ -1311,8 +1375,12 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
     # make a figure -- three rows x two columns ______________________________________
     # rows -- y-offset wba traces, stim, overlays wba traces + mean
     # columns -- left and right spontaneous turns
-        
-    n_cols = 2 
+    
+    if plot_by_stim:
+        n_cols = 4
+    else:    
+        n_cols = 2
+     
     n_rows = 3
         
     gs = gridspec.GridSpec(n_rows,n_cols,height_ratios=[1,.05,.66])
@@ -1323,22 +1391,34 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
     all_offset_wba_ax = np.empty(n_cols,dtype=plt.Axes)
     all_stim_ax = np.empty(n_cols,dtype=plt.Axes)
     all_overlaid_wba_ax = np.empty(n_cols,dtype=plt.Axes) 
+    
+    # specify conditions for looping,
+    # add a clean way to format the left most column
+    if plot_by_stim:
+        col_iter = stim_cnds 
+    else:
+        col_iter = direction_titles
+    first_col = col_iter[0]    
      
-    for stim_dir in direction_titles: 
+    for col in col_iter: 
         
         # find all saccades of the stimulus type ______________________________________
-        if stim_dir == 'left':
-            this_stim_dirs = [2,3]
+        
+        if plot_by_stim:
+            this_stim_trs = np.where(saccade_info.ix['cnd',:] == col)[0]
         else:
-            this_stim_dirs = [0,1]
+            if col == 'left':
+                this_stim_dirs = [2,3]
+            else:
+                this_stim_dirs = [0,1]
         
-        stim1_trs = np.where(saccade_info.ix['cnd',:] == this_stim_dirs[0])[0]
-        stim2_trs = np.where(saccade_info.ix['cnd',:] == this_stim_dirs[1])[0]
+            stim1_trs = np.where(saccade_info.ix['cnd',:] == this_stim_dirs[0])[0]
+            stim2_trs = np.where(saccade_info.ix['cnd',:] == this_stim_dirs[1])[0]
         
-        this_stim_trs = np.hstack([stim1_trs,stim2_trs])
-        
+            this_stim_trs = np.hstack([stim1_trs,stim2_trs])
+            
         # create subplots ________________________________________________________              
-        if stim_dir == 'left':
+        if col == first_col:
             offset_wba_ax  = plt.subplot(gs[0,0]) 
             stim_ax = plt.subplot(gs[1,0])
             overlaid_wba_ax = plt.subplot(gs[2,0])   
@@ -1353,19 +1433,29 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
             all_overlaid_wba_ax[0] = overlaid_wba_ax  
 
         else: 
-            offset_wba_ax  = plt.subplot(gs[0,1]) 
-            stim_ax = plt.subplot(gs[1,1])    
-            overlaid_wba_ax = plt.subplot(gs[2,1])    
+            if plot_by_stim:
+                c_i = col 
+            else:
+                c_i = 1
+                
+            offset_wba_ax  = plt.subplot(gs[0,c_i]) 
+            stim_ax = plt.subplot(gs[1,c_i])    
+            overlaid_wba_ax = plt.subplot(gs[2,c_i])    
 
             #offset_wba_ax  = plt.subplot(gs[0,1], sharex=all_offset_wba_ax[0],  sharey=all_offset_wba_ax[0]) 
             #stim_ax = plt.subplot(gs[1,1], sharex=all_offset_wba_ax[0], sharey=all_stim_ax[0])    
             #overlaid_wba_ax = plt.subplot(gs[2,1], sharex=all_offset_wba_ax[0], sharey=all_overlaid_wba_ax[0])    
 
-            all_offset_wba_ax[1] = offset_wba_ax
-            all_stim_ax[1] = stim_ax
-            all_overlaid_wba_ax[1] = overlaid_wba_ax  
+            all_offset_wba_ax[c_i] = offset_wba_ax
+            all_stim_ax[c_i] = stim_ax
+            all_overlaid_wba_ax[c_i] = overlaid_wba_ax  
         
-        offset_wba_ax.set_title('Spot on the ' + stim_dir)      
+        if plot_by_stim:
+            offset_wba_ax.set_title(stim_titles[col])
+        else:
+            offset_wba_ax.set_title('Spot on the ' + col)   
+
+            
 
         # show turn window
         offset_wba_ax.axvspan(640, 740, facecolor='black', alpha=0.25)
@@ -1482,28 +1572,63 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
     title_text = 'Spont saccades '+str(-1*min_pre_saccade_t) + ' to ' + \
                         str(-1*max_pre_saccade_t) + ' ms before spot movement'
                         
-    #all_offset_wba_ax[1].set_ylim([-1,17])
-    all_stim_ax[0].set_ylim([0,10])
-    all_stim_ax[1].set_ylim([0,10])
-    all_overlaid_wba_ax[0].set_ylim([-.7,.7])
-    all_overlaid_wba_ax[1].set_ylim([-.7,.7])             
+                        
+    # now clean up axes ____________________________________________
+    
+    if plot_by_stim:
+        # first column needs full labels ________
+        #all_offset_wba_ax[1].set_ylim([-1,17])
+        
+        
+        # loop through non-first columns ________
+        
+        all_stim_ax[0].set_ylim([0,10])
+        all_stim_ax[1].set_ylim([0,10])
+        all_overlaid_wba_ax[0].set_ylim([-.7,.7])
+        all_overlaid_wba_ax[1].set_ylim([-.7,.7])             
                  
                  
-    all_offset_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
-    all_overlaid_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
-    all_overlaid_wba_ax[0].set_xlabel('Time (ms)')
+        all_offset_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
+        all_overlaid_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
+        all_overlaid_wba_ax[0].set_xlabel('Time (ms)')
     
-    # remove extra xtick labels
-    all_offset_wba_ax[0].xaxis.set_ticklabels([])
-    all_offset_wba_ax[1].xaxis.set_ticklabels([])
+        # remove extra xtick labels
+        all_offset_wba_ax[0].xaxis.set_ticklabels([])
+        all_offset_wba_ax[1].xaxis.set_ticklabels([])
     
-    all_stim_ax[0].xaxis.set_ticklabels([])
-    all_stim_ax[0].yaxis.set_ticklabels([])
-    all_stim_ax[1].xaxis.set_ticklabels([])
-    all_stim_ax[1].yaxis.set_ticklabels([])
+        all_stim_ax[0].xaxis.set_ticklabels([])
+        all_stim_ax[0].yaxis.set_ticklabels([])
+        all_stim_ax[1].xaxis.set_ticklabels([])
+        all_stim_ax[1].yaxis.set_ticklabels([])
     
-    all_offset_wba_ax[1].yaxis.set_ticklabels([])
-    all_overlaid_wba_ax[1].yaxis.set_ticklabels([])
+        all_offset_wba_ax[1].yaxis.set_ticklabels([])
+        all_overlaid_wba_ax[1].yaxis.set_ticklabels([])
+    
+    else:                                             
+        #all_offset_wba_ax[1].set_ylim([-1,17])
+        all_stim_ax[0].set_ylim([0,10])
+        all_stim_ax[1].set_ylim([0,10])
+        all_overlaid_wba_ax[0].set_ylim([-.7,.7])
+        all_overlaid_wba_ax[1].set_ylim([-.7,.7])             
+                 
+                 
+        all_offset_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
+        all_overlaid_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
+        all_overlaid_wba_ax[0].set_xlabel('Time (ms)')
+    
+        # remove extra xtick labels
+        all_offset_wba_ax[0].xaxis.set_ticklabels([])
+        all_offset_wba_ax[1].xaxis.set_ticklabels([])
+    
+        all_stim_ax[0].xaxis.set_ticklabels([])
+        all_stim_ax[0].yaxis.set_ticklabels([])
+        all_stim_ax[1].xaxis.set_ticklabels([])
+        all_stim_ax[1].yaxis.set_ticklabels([])
+    
+        all_offset_wba_ax[1].yaxis.set_ticklabels([])
+        all_overlaid_wba_ax[1].yaxis.set_ticklabels([])
+        
+        
     
     fig.text(.05,.95,title_text,fontsize=14)
     
