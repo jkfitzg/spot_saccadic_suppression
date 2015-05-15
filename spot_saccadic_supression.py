@@ -197,18 +197,15 @@ class Spot_Saccadic_Supression(Flight):
         
     def parse_stim_type(self):
         #calculate, save the stimulus type of each trial
-       
-        ## 3.80; % [1] Spot on L, moving back to front (4th stimulus, in order)
-        ## 3.90; % [2] Spot on L, moving front to back (3rd stimulus, in order)
-        ## 2.50; % [3] Spot on R, moving back to front (2nd stimulus, in order)
-        ## 2.40; % [4] Spot on R, moving front to back (1st stimulus, in order)
         
-        self.stim_types_labels = {24:'Spot on right, 1 p offset, front to back',\
-                            25:'Spot on right, 1 p offset, back to front',\
-                            38:'Spot on left, 1 p offset, back to front',\
-                            39:'Spot on left, 1 p offset, front to back' ,\
+        self.stim_types_labels = {24:'Spot on right, front to back',\
+                            25:'Spot on right, back to front',\
+                            38:'Spot on left, back to front',\
+                            39:'Spot on left, front to back' ,\
                             44:'Spot on right, .5 p offset, front to back',\
                             46:'Spot on left, .5 p offset, front to back'}
+        # patterns 24, 25, 38, 39 are all 1 panel offset from the center
+        # patterns 44 and 46 are 0.5 panel offset from the center
        
         stim_types = -1*np.ones(self.n_trs,'int')
     
@@ -332,23 +329,31 @@ class Spot_Saccadic_Supression(Flight):
             # show turn window
             if long_static_spot:
                 all_wba_ax[col].axvspan(2365, 2465, facecolor='grey', alpha=0.5)    
+            elif self.protocol == 'optical tracking':
+                all_wba_ax[col].axvspan(13700, 14700, facecolor='grey', alpha=0.5)
             else:
                 all_wba_ax[col].axvspan(1370, 1470, facecolor='grey', alpha=0.5)    
+            
+            
+            
             
             # remove all time xticklabels __________________________________
             all_wba_ax[col].tick_params(labelbottom='off')
             
             # label columns
-            all_wba_ax[col].set_title(self.stim_types_labels[cnds_to_plot[col]],fontsize=10)
+            all_wba_ax[col].set_title(self.stim_types_labels[cnds_to_plot[col]],fontsize=12)
             
             
             if col == 0:           
-                all_wba_ax[col].set_ylabel('L-R WBA (V)')
+                if self.protocol == 'optical tracking':
+                    all_wba_ax[col].set_ylabel('L-R WBA (degrees)',fontsize=12)
+                else:
+                    all_wba_ax[col].set_ylabel('L-R WBA (V)',fontsize=12)
             
                 all_wba_ax[col].set_ylim(wba_lim)
                 all_wba_ax[col].set_yticks([wba_lim[0],0,wba_lim[1]])
                 
-                all_stim_ax[col].set_ylabel('stim frame',fontsize=10)
+                all_stim_ax[col].set_ylabel('stim frame',fontsize=9)
                 all_stim_ax[col].tick_params(labelleft='off')
                 all_stim_ax[col].tick_params(labelbottom='off')
             
@@ -370,6 +375,7 @@ class Spot_Saccadic_Supression(Flight):
                 all_stim_ax[col].xaxis.set_major_formatter(formatter)
                 all_stim_ax[col].tick_params(labelbottom='on')
                 all_stim_ax[col].tick_params(labelleft='off')
+                all_stim_ax[col].locator_params(tight=True, nbins=5)
                 all_stim_ax[col].set_xlabel('Time (s)')
             else:
                 all_wba_ax[col].tick_params(labelleft='off')
@@ -386,7 +392,7 @@ class Spot_Saccadic_Supression(Flight):
             plt.savefig(saveas_path + figure_txt + '_sacc_supression_wba_by_cnd.png',\
                             bbox_inches='tight',dpi=100) 
 
-    def plot_wba_by_cnd_y_offset(self,title_txt='',long_static_spot=False,diff_thres=0.025,trs_to_mark=[],\
+    def plot_wba_by_cnd_y_offset(self,title_txt='',long_static_spot=False,diff_thres=0.02,trs_to_mark=[],\
                     tr_range=slice(None),filter_cutoff=48,if_save=True): 
         # plot single trace of each of the four saccadic movement conditions
         
@@ -525,25 +531,22 @@ class Spot_Saccadic_Supression(Flight):
             # show turn window
             
             if long_static_spot:
-                all_wba_ax[col].axvspan(1630, 1730, facecolor='black', alpha=0.5)    
-            elif self.protocol == 'optical tracking':
-                all_wba_ax[col].axvspan(6300, 7300, facecolor='black', alpha=0.5)    
+                all_wba_ax[col].axvspan(1.630*sampling_rate, 1.730*sampling_rate, facecolor='black', alpha=0.5)       
             else:
-                all_wba_ax[col].axvspan(630, 730, facecolor='black', alpha=0.5)    
-                
+                all_wba_ax[col].axvspan(.630*sampling_rate, .730*sampling_rate, facecolor='black', alpha=0.5)        
             
             # remove all time xticklabels __________________________________
             all_wba_ax[col].tick_params(labelbottom='off')
             
             # label columns
-            all_wba_ax[col].set_title(self.stim_types_labels[cnds_to_plot[col]],fontsize=10)
+            all_wba_ax[col].set_title(self.stim_types_labels[cnds_to_plot[col]],fontsize=12)
             
             if col == 0:           
                 
                 if self.protocol == 'optical tracking':
-                    all_wba_ax[col].set_ylabel('L-R WBA (degrees) + offset',fontsize=10)
+                    all_wba_ax[col].set_ylabel('L-R WBA (degrees) + offset',fontsize=12)
                 else:
-                    all_wba_ax[col].set_ylabel('L-R WBA (V) + offset',fontsize=10)
+                    all_wba_ax[col].set_ylabel('L-R WBA (V) + offset',fontsize=12)
                 
                 this_ylim = all_wba_ax[col].get_ylim()
                 
@@ -586,8 +589,6 @@ class Spot_Saccadic_Supression(Flight):
                 all_stim_ax[col].tick_params(labelbottom='off')
         
         figure_txt = title_txt
-        if self.protocol == 'optical tracking':
-            figure_txt = figure_txt + ' _ strokelitude'
         
         fig.text(.2,.95,figure_txt,fontsize=18) 
        
@@ -595,7 +596,13 @@ class Spot_Saccadic_Supression(Flight):
 
         if if_save:
             saveas_path = '/Users/jamie/bin/figures/offset trials/'
-            plt.savefig(saveas_path + figure_txt + '_wba_by_cnd_yoffset.png',\
+            
+            if trs_to_mark:
+                plt.savefig(saveas_path + figure_txt + '_wba_by_cnd_yoffset_marked_saccades.png',\
+                            bbox_inches='tight',dpi=200)     
+    
+            else:
+                plt.savefig(saveas_path + figure_txt + '_wba_by_cnd_yoffset.png',\
                             bbox_inches='tight',dpi=200)     
         
         
@@ -1021,6 +1028,7 @@ def get_saccade_and_control_traces(saccades_dict,filter_fs=1000):
             
             stim_i = one_saccade_info[0]
             stim_tr_i = one_saccade_info[1]
+            #print stim_i, stim_tr_i
             
             this_stim_traces = all_traces.loc[:,('this_fly',slice(None),stim_types[stim_i],'lmr')]
             this_saccade_trace = this_stim_traces.iloc[0:max_t,(stim_tr_i)]
