@@ -792,26 +792,10 @@ def process_wings(raw_wings):
     processed_wings = -45 + shifted_wings*33.75
     return processed_wings
         
-def find_candidate_saccades(filtered_lmr_trace,diff_thres=0.005):
-    # return the index positions within filtered_lmr_trace of candidate 
-    # saccades, as shown by high derivates
-    
-    lmr_diff_above_thres = np.where(np.abs(np.diff(filtered_lmr_trace)) >= diff_thres)[0]
-
-    # then find the first of sequential points 
-    min_separation = 5
-    above_thres_diff = np.where(np.diff(lmr_diff_above_thres) > min_separation)[0]
-    potential_saccade_start_is = lmr_diff_above_thres[above_thres_diff+1]
-    
-    # now add the first start
-    if lmr_diff_above_thres.size:
-        potential_saccade_start_is = np.hstack([lmr_diff_above_thres[0],potential_saccade_start_is])
-        potential_saccade_start_is = potential_saccade_start_is - 1
-    
-    return potential_saccade_start_is
-    
-             
 def find_saccades(raw_lmr_trace,test_plot=False):
+# this function hasn't been tuned to the current signal.
+# use this more as an algorithm outline
+
     #first fill in nans with nearest signal
     lmr_trace = raw_lmr_trace[~np.isnan(raw_lmr_trace)] 
         #this may give different indexing than input
@@ -870,114 +854,7 @@ def butter_lowpass_filter(data, cutoff=12, fs=1000, order=5): #how does the orde
     #y = sp.signal.lfilter(b, a, data) #what's the difference here? 
     y = sp.signal.filtfilt(b, a, data)
     return y
-      
-def plot_pop_flight_over_time(all_fnames,protocol,title_txt='',wba_lim=[-1.5,1.5],if_save=True): 
-        # clean this up --
-        # first store all points by vectorizing
-        # change from plot -> get with boolean for plotting
-        # make a separate function for plotting the population change over time
-        #
-        # this seems to work well, but I need to to show the windows of the saccades
-        
-        #get all traces and detect saccades ______________________________________________
-        
-        
-        behavior_path = '/Users/jamie/Dropbox/maimon lab - behavioral data/'
-        fig = plt.figure(figsize=(9.5,11.5))       #(16.5, 9))
-        
-        if protocol == 'looming':
-            n_cnds = 3
-        else:
-            n_cnds = 4
-            
-        cnds_to_plot = range(n_cnds)
-        all_colors = [blue,magenta,green,black]
-        
-        n_flies = np.size(all_fnames)
-        print n_flies
-        n_cnds = n_cnds
-        max_trs = 150
-        
-        fly_traces_by_cnd = np.nan*np.ones([n_flies,n_cnds,max_trs])
-         
-        for f_name,fly_i in zip(all_fnames,range(n_flies)): #each fly
-            # fly init
-            # get fly conditions and traces
-            
-            fly = Spot_Adaptation_Flight(behavior_path + f_name,True)
-            fly.process_fly()
-            lmr_avg, cnd_types = fly.get_flight_over_time()
-
-            
-            for cnd in cnds_to_plot:
-                this_cnd_trs = np.where(cnd_types == cnd)[0]
-                n_trs = np.size(this_cnd_trs)
-                this_color = all_colors[cnd]
-                
-                if cnd >= 2 and protocol == 'control':
-                    plt.plot(np.arange(n_trs)+50,lmr_avg[this_cnd_trs],'-',color=this_color)
-                elif cnd < 2 and protocol == '1f grating':
-                    plt.plot(np.arange(n_trs)+20,lmr_avg[this_cnd_trs],'-',color=this_color)
-                elif cnd == 0 and protocol == 'looming':
-                    plt.plot(np.arange(n_trs)+20,lmr_avg[this_cnd_trs],'-',color=this_color)
-                else:
-                    plt.plot(range(n_trs),lmr_avg[this_cnd_trs],'-',color=this_color)
-        
-                #save all means/fly
-                fly_traces_by_cnd[fly_i,cnd,range(0,n_trs)] = lmr_avg[this_cnd_trs]
-        
-        for cnd in cnds_to_plot:
-            if cnd >= 2 and protocol == 'control':
-                plt.plot(np.arange(max_trs)+50,np.nanmean(fly_traces_by_cnd,0)[cnd],color=all_colors[cnd],linewidth=4)
-            elif cnd < 2 and protocol == '1f grating':
-                plt.plot(np.arange(max_trs)+20,np.nanmean(fly_traces_by_cnd,0)[cnd],color=all_colors[cnd],linewidth=4)
-            elif cnd == 0 and protocol == 'looming':
-                plt.plot(np.arange(max_trs)+20,np.nanmean(fly_traces_by_cnd,0)[cnd],color=all_colors[cnd],linewidth=4)
-            else:
-                plt.plot(np.arange(max_trs),np.nanmean(fly_traces_by_cnd,0)[cnd],color=all_colors[cnd],linewidth=4)
-            
-            
-        plt.axhline(linewidth=.5, color=black)
-                
-        plt.xlabel('Trial number')
-        plt.ylabel('L-R WBA in turn window')  
-        plt.title(title_txt,fontsize=18)  
-        plt.ylim([-1.5,1.5])
-        plt.xlim([0,60])
-       
-        if protocol == '1f grating':
-            stim_types_labels =['right 1/f grating',
-                        'left 1/f grating',
-                        'right middle spot',
-                        'left middle spot',
-                        'right middle spot',
-                        'left middle spot']
-                        
-        elif protocol == 'looming':
-            stim_types_labels =['center looming',
-                        'right middle spot',
-                        'left middle spot',]
-                            
-        else: # grating iti, control
-            stim_types_labels =['right, middle height',
-                                'left, middle height',
-                                'right, top height',
-                                'left, top height']
-        
-        for cnd in range(np.size(cnds_to_plot)):
-            fig.text(.7,.85-.03*cnd,stim_types_labels[cnd],color=all_colors[cnds_to_plot[cnd]],fontsize=14) 
-        
-       
-        if if_save:
-            saveas_path = '/Users/jamie/bin/figures/'
-            if protocol == '1/f grating':
-                plt.savefig(saveas_path + title_txt + 'population_turn_adaptation.png',\
-                                    bbox_inches='tight',dpi=100) 
-        
-            else:
-                plt.savefig(saveas_path + title_txt + 'population_turn_adaptation.png',\
-                                    bbox_inches='tight',dpi=100) 
-        
+              
 def get_saccade_and_control_traces(saccades_dict,filter_fs=1000):
     # input -- dictionary in which the keys are the fly filenames
     # and the values are arrays of tuples of the stimulus condition, trial
@@ -1018,9 +895,19 @@ def get_saccade_and_control_traces(saccades_dict,filter_fs=1000):
         #print f_name
         fly = Spot_Saccadic_Supression(path_name + '2015_'+ f_name)
         fly.process_fly(False)
-    
-        all_traces, saccades = fly.get_traces_by_stim()
         stim_types = fly.unique_stim_types
+         
+        all_traces, saccades = fly.get_traces_by_stim()
+       
+        # discard the traces earlier in time.
+        # this value is somewhat arbitrary, but saccade times are relative it.
+        s_iti = .25 * fly.sampling_rate    
+        new_start_t = int(3*s_iti) 
+        all_traces = all_traces.ix[new_start_t:,slice(None)]
+        new_index = np.array(all_traces.index) - new_start_t
+        all_traces.index = new_index
+    
+    
     
         this_fly_saccades = saccades_dict[f_name]
         
@@ -1075,90 +962,6 @@ def get_saccade_and_control_traces(saccades_dict,filter_fs=1000):
             saccade_i = saccade_i + 1    
     
     return saccade_info, saccade_and_control_traces
-
-def calculate_saccade_latencies(all_saccade_traces):
-    # find the onset time of spont saccades
-    # inputs -- all_saccade_traces matrix of n_saccades x t
-    # this isn't very robust to multiple saccades or artifacts. 
-    # now just detecting by eye, but I should automate this.
-    
-    n_saccades = np.size(all_saccade_traces)
-    
-    spont_saccade_times = pd.Series(index=range(n_saccades))
-    plot_on = False
-    for s in range(n_saccades):
-        trace_abs_diff = 10*abs(np.diff(all_saccade_traces.ix[:,s]))
-        max_i = np.argmax(trace_abs_diff[150:600])+150
-    
-        if plot_on:
-            fig = plt.figure()
-            plt.plot(all_saccade_traces.ix[:,s])
-            plt.plot(trace_abs_diff,color=magenta)
-            plt.plot(max_i,0,'go')
-            plt.title(s)
-    
-    return max_i
-    
-def plot_saccade_traces_with_controls_y_offset_v1(right_stim_sorted,left_stim_sorted,\
-                        right_stim_sacc_t,left_stim_sacc_t): 
-    # code fragment. does not yet run.
-     
-    spont_saccade_times.sort()
-    
-    right_stim = np.hstack([np.where(all_stim_types == 0)[0],\
-                       np.where(all_stim_types == 1)[0]])
-    left_stim = np.hstack([np.where(all_stim_types == 2)[0],\
-                       np.where(all_stim_types == 3)[0]])
-                       
-    right_stim_sorted = spont_saccade_times[right_stim].order().index
-    right_stim_sacc_t = spont_saccade_times[right_stim].order().values
-    left_stim_sorted = spont_saccade_times[left_stim].order().index
-    left_stim_sacc_t = spont_saccade_times[left_stim].order().values
-    
-    for stim_subset,title in zip([right_stim_sorted,left_stim_sorted],\
-                             ['Right','Left']): 
-
-        # plot right stim ________________________________________________
-        # get a colormap
-        n_stim = len(stim_subset)
-        n_colors = n_stim
-        cmap = plt.cm.get_cmap('spectral')
-        cNorm = colors.Normalize(0,n_colors)
-        scalarMap = cm.ScalarMappable(norm=cNorm,cmap=cmap)
-
-        # now combine the traces in a single plot
-        fig = plt.figure(figsize=(5,9.5))
-        baseline_window = range(0,150)
-
-        for i,s in zip(range(n_stim),stim_subset): #range(n_saccades):
-            this_color = scalarMap.to_rgba(i)
-
-            this_saccade_trace = all_saccade_traces.ix[:,s]
-            this_control_trace = all_control_traces.ix[:,s]
-
-            processed_saccade_trace = this_saccade_trace-np.nanmean(this_saccade_trace[baseline_window])
-            processed_control_trace = this_control_trace-np.nanmean(this_control_trace[baseline_window])
-
-            plt.plot(processed_saccade_trace+i/2.0,color=this_color,\
-                     linewidth=3)
-            plt.plot(processed_control_trace+i/2.0,color=this_color,\
-                     linewidth=1)
-
-
-        if title == 'Right':
-            plt.ylim([-.55,9.5])
-        else:
-            plt.ylim([-.4,13])
-        
-        #plt.ylim([-.55,9.25])
-        # show turn window
-        plt.axvspan(620, 770, facecolor='black', alpha=0.5)             
-        plt.xlabel('Time (ms)')
-        plt.ylabel('L-R WBA (V)+tr offset')
-        plt.title(title+' spot saccade traces, sorted by spont saccade')
-        saveas_path = '/Users/jamie/bin/figures/'
-        plt.savefig(saveas_path+ title+' spot saccade traces - sorted.png',\
-                    bbox_inches='tight',dpi=100)
                          
 def plot_spot_saccade_versus_spont_saccade_time():  
     # specify all input arguments
@@ -1171,8 +974,7 @@ def plot_spot_saccade_versus_spont_saccade_time():
     # replot the saccade traces v. controls 
     # within the same stimulus types
     # this function is still a work in progress
-    # ** important -- I need to separate the directions of the saccades
-
+   
         fig = plt.figure()
         saccade_baseline_window = range(585,620)
         saccade_window = range(665,700)
@@ -1202,7 +1004,6 @@ def plot_spot_saccade_versus_spont_saccade_time():
         saveas_path = '/Users/jamie/bin/figures/'
         plt.savefig(saveas_path+' spot saccade v. spont sacc time.png',\
                     bbox_inches='tight',dpi=100)     
-
                  
 def plot_saccade_traces_pre_pos_y_offset(saccade_info, saccade_and_control_traces): 
     # for each condition, show saccades to the left and to the right
@@ -1379,7 +1180,7 @@ def plot_saccade_traces_pre_pos_y_offset(saccade_info, saccade_and_control_trace
                     bbox_inches='tight',dpi=100)
         
 def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_control_traces,
-                                min_pre_saccade_t,max_pre_saccade_t,plot_by_stim=True): 
+                                min_pre_saccade_t,max_pre_saccade_t,plot_by_stim=False): 
     # for each condition, show saccades to the left and to the right
     # + their previous and post traces in finer lines
     #
@@ -1393,8 +1194,8 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
     stim_titles = ['Spot on right, front->back','Spot on right, back->front',\
                    'Spot on left, back->front','Spot on left, front->back']
     
-    spont_sacc_dir = ['L','R']    
-    direction_titles =['left','right']
+    spont_sacc_dir = ['R','L']    
+    direction_titles =['right','left']
     
     overlaid_offset = 0
 
@@ -1446,13 +1247,8 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
         # create subplots ________________________________________________________              
         if col == first_col:
             offset_wba_ax  = plt.subplot(gs[0,0]) 
-            stim_ax = plt.subplot(gs[1,0])
-            overlaid_wba_ax = plt.subplot(gs[2,0])   
-        
-            # axis sharing is nice for interactive plots, but bad for saving figures
-            #offset_wba_ax  = plt.subplot(gs[0,0]) 
-            #stim_ax = plt.subplot(gs[1,0],sharex=offset_wba_ax)
-            #overlaid_wba_ax = plt.subplot(gs[2,0],sharex=offset_wba_ax)   
+            stim_ax = plt.subplot(gs[1,0],sharex=offset_wba_ax)
+            overlaid_wba_ax = plt.subplot(gs[2,0],sharex=offset_wba_ax)   
         
             all_offset_wba_ax[0] = offset_wba_ax
             all_stim_ax[0] = stim_ax
@@ -1464,13 +1260,9 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
             else:
                 c_i = 1
                 
-            offset_wba_ax  = plt.subplot(gs[0,c_i]) 
-            stim_ax = plt.subplot(gs[1,c_i])    
-            overlaid_wba_ax = plt.subplot(gs[2,c_i])    
-
-            #offset_wba_ax  = plt.subplot(gs[0,1], sharex=all_offset_wba_ax[0],  sharey=all_offset_wba_ax[0]) 
-            #stim_ax = plt.subplot(gs[1,1], sharex=all_offset_wba_ax[0], sharey=all_stim_ax[0])    
-            #overlaid_wba_ax = plt.subplot(gs[2,1], sharex=all_offset_wba_ax[0], sharey=all_overlaid_wba_ax[0])    
+            offset_wba_ax  = plt.subplot(gs[0,c_i], sharex=all_offset_wba_ax[0], sharey=all_offset_wba_ax[0]) 
+            stim_ax = plt.subplot(gs[1,c_i], sharex=all_offset_wba_ax[0], sharey=all_stim_ax[0])    
+            overlaid_wba_ax = plt.subplot(gs[2,c_i], sharex=all_offset_wba_ax[0], sharey=all_overlaid_wba_ax[0])    
 
             all_offset_wba_ax[c_i] = offset_wba_ax
             all_stim_ax[c_i] = stim_ax
@@ -1481,14 +1273,12 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
         else:
             offset_wba_ax.set_title('Spot on the ' + col)   
 
-            
-
         # show turn window
         offset_wba_ax.axvspan(640, 740, facecolor='black', alpha=0.25)
         stim_ax.axvspan(640, 740, facecolor='black', alpha=0.25)
         overlaid_wba_ax.axvspan(640, 740, facecolor='black', alpha=0.25)
 
-        # intersect with the same stimulus type
+        # intersect direction with the same stimulus type
         this_stim_dir_trs = this_stim_trs  # just combine all directions of saccades for now
         
         #  get the saccade start times for this stimulus direction
@@ -1497,8 +1287,8 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
         # now just select saccades that in this time range
         saccade_turn_t = 640
         spot_move_t = 575 # approximate
-        this_min_t  = min_pre_saccade_t + spot_move_t # +saccade_turn_t #-600
-        this_max_t = max_pre_saccade_t + spot_move_t  #+saccade_turn_t  #-400
+        this_min_t  = min_pre_saccade_t + spot_move_t
+        this_max_t = max_pre_saccade_t + spot_move_t
         
         offset_wba_ax.axvspan(this_min_t, this_max_t, facecolor='black', alpha=0.125)
         
@@ -1556,16 +1346,15 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
     
         # now plot the means here
         this_dir_trs_all_traces = saccade_and_control_traces.loc[:,this_stim_t_saccades.tolist()]
-    
+        t = range(1000)
     
         # prev traces ____________________________________
         prev_traces = this_dir_trs_all_traces.loc[:,(slice(None),'prev')].values
         prev_means = np.nanmean(prev_traces,axis=1) # - np.nanmean(prev_traces[sub_window])
         prev_ste = np.nanstd(prev_traces,axis=1)/math.sqrt(n_this_saccades)
-        overlaid_wba_ax.plot(prev_means-overlaid_offset,color=blue,linewidth=3)
+        overlaid_wba_ax.plot(prev_means-overlaid_offset,color=bblue,linewidth=3)
     
         # get,plot error bars
-        t = range(1000)
         lower_bound = prev_means - prev_ste
         upper_bound = prev_means + prev_ste
         overlaid_wba_ax.fill_between(t, lower_bound, upper_bound, facecolor=blue, alpha=0.25)
@@ -1577,7 +1366,6 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
         overlaid_wba_ax.plot(post_means+overlaid_offset,color=black,linewidth=3)
     
         # get,plot error bars
-        t = range(1000)
         lower_bound = post_means - post_ste
         upper_bound = post_means + post_ste
         overlaid_wba_ax.fill_between(t, lower_bound, upper_bound, facecolor=black, alpha=0.25)
@@ -1589,72 +1377,36 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
         overlaid_wba_ax.plot(saccade_means,color=magenta,linewidth=3)
         
         # get,plot error bars
-        t = range(1000)
         lower_bound = saccade_means - saccade_ste
         upper_bound = saccade_means + saccade_ste
         overlaid_wba_ax.fill_between(t, lower_bound, upper_bound, facecolor=magenta, alpha=0.25)
         
 
-    title_text = 'Spont saccades '+str(-1*min_pre_saccade_t) + ' to ' + \
+    title_text = 'Spontaneous saccades '+str(-1*min_pre_saccade_t) + ' to ' + \
                         str(-1*max_pre_saccade_t) + ' ms before spot movement'
                         
                         
     # now clean up axes ____________________________________________
     
-    if plot_by_stim:
-        # first column needs full labels ________
-        #all_offset_wba_ax[1].set_ylim([-1,17])
-        
-        
-        # loop through non-first columns ________
-        
-        all_stim_ax[0].set_ylim([0,10])
-        all_stim_ax[1].set_ylim([0,10])
-        all_overlaid_wba_ax[0].set_ylim([-.7,.7])
-        all_overlaid_wba_ax[1].set_ylim([-.7,.7])             
-                 
-                 
-        all_offset_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
-        all_overlaid_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
-        all_overlaid_wba_ax[0].set_xlabel('Time (ms)')
+    # first column needs full labels ________        
+    all_stim_ax[0].set_ylim([0,10])
+    all_overlaid_wba_ax[0].set_ylim([-.7,.7])
+    all_overlaid_wba_ax[0].locator_params(tight=True,nbins=5,axis='y') #set n bins to 3
+             
+    all_offset_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
+    all_overlaid_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
+    all_overlaid_wba_ax[0].set_xlabel('Time (ms)')
+
+    # remove extra xtick labels
+    for col in range(n_cols):
+        plt.setp(all_offset_wba_ax[col].get_xticklabels(), visible=False)
+        plt.setp(all_stim_ax[col].get_xticklabels(), visible=False)
+        plt.setp(all_stim_ax[col].get_yticklabels(), visible=False)
     
-        # remove extra xtick labels
-        all_offset_wba_ax[0].xaxis.set_ticklabels([])
-        all_offset_wba_ax[1].xaxis.set_ticklabels([])
-    
-        all_stim_ax[0].xaxis.set_ticklabels([])
-        all_stim_ax[0].yaxis.set_ticklabels([])
-        all_stim_ax[1].xaxis.set_ticklabels([])
-        all_stim_ax[1].yaxis.set_ticklabels([])
-    
-        all_offset_wba_ax[1].yaxis.set_ticklabels([])
-        all_overlaid_wba_ax[1].yaxis.set_ticklabels([])
-    
-    else:                                             
-        #all_offset_wba_ax[1].set_ylim([-1,17])
-        all_stim_ax[0].set_ylim([0,10])
-        all_stim_ax[1].set_ylim([0,10])
-        all_overlaid_wba_ax[0].set_ylim([-.7,.7])
-        all_overlaid_wba_ax[1].set_ylim([-.7,.7])             
-                 
-                 
-        all_offset_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
-        all_overlaid_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
-        all_overlaid_wba_ax[0].set_xlabel('Time (ms)')
-    
-        # remove extra xtick labels
-        all_offset_wba_ax[0].xaxis.set_ticklabels([])
-        all_offset_wba_ax[1].xaxis.set_ticklabels([])
-    
-        all_stim_ax[0].xaxis.set_ticklabels([])
-        all_stim_ax[0].yaxis.set_ticklabels([])
-        all_stim_ax[1].xaxis.set_ticklabels([])
-        all_stim_ax[1].yaxis.set_ticklabels([])
-    
-        all_offset_wba_ax[1].yaxis.set_ticklabels([])
-        all_overlaid_wba_ax[1].yaxis.set_ticklabels([])
-        
-        
+        if col > 0:
+            plt.setp(all_offset_wba_ax[col].get_yticklabels(), visible=False)
+            plt.setp(all_overlaid_wba_ax[col].get_yticklabels(), visible=False)
+            plt.setp(all_overlaid_wba_ax[col].get_xticklabels(), visible=False)
     
     fig.text(.05,.95,title_text,fontsize=14)
     
