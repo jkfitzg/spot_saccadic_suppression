@@ -23,6 +23,9 @@ import scipy as sp
 
 class Flight():  
     def __init__(self, fname, protocol='wing beat analyzer'):
+    # get filename and protocol type for experiment
+    # save details
+     
         if fname.endswith('.abf'):
             self.basename = ''.join(fname.split('.')[:-1])
             self.fname = fname
@@ -38,34 +41,42 @@ class Flight():
             self.sampling_rate = 10000
                   
     def open_abf(self,exclude_indicies=[]): 
+    # input: optional list of time points to exclude
+    # saves information from all channels into numpy arrays
+    
         abf = read_abf(self.fname)              
         
-        if self.protocol == 'wing beat analyzer': #different channels here, although same file structures
-            n_indicies = np.size(abf['stim_x'])      #assume all channels have the same sample #s 
+        # different channel names for wing beat analyzer versus
+        # strokelitude, although same file structures
+        # assumes all channels have the same sample #s 
+        
+        if self.protocol == 'wing beat analyzer': 
+            n_indicies = np.size(abf['stim_x'])      
             inc_indicies = np.setdiff1d(range(n_indicies),exclude_indicies);
                    
             self.xstim = np.array(abf['stim_x'])[inc_indicies]
             self.ystim = np.array(abf['stim_y'])[inc_indicies]
 
-            # no wing processing
+            # no wing processing here
             self.lwa = np.array(abf['l_wba'])[inc_indicies]
             self.rwa = np.array(abf['r_wba'])[inc_indicies]
         
             self.ao = np.array(abf['ao1'])[inc_indicies]
         
-            self.vm = np.nan*np.ones_like(self.lwa)    #empty, although this is a hack. **
-            self.tach = np.array([])              #empty
+            self.vm = np.nan*np.ones_like(self.lwa)     #empty
+            self.tach = np.array([])                    #empty
             
         elif self.protocol == 'optical tracking':
-            n_indicies = np.size(abf['x_ch']) #assume all channels have the same sample #s 
+            n_indicies = np.size(abf['x_ch'])  
             inc_indicies = np.setdiff1d(range(n_indicies),exclude_indicies);
                
             self.xstim = np.array(abf['x_ch'])[inc_indicies]
             self.ystim = np.array(abf['y_ch'])[inc_indicies]
 
-            # process wing signal
             lwa_v = np.array(abf['wba_l'])[inc_indicies]
             rwa_v = np.array(abf['wba_r'])[inc_indicies]    
+            
+            # process wing signal
             self.lwa = process_wings(lwa_v)
             self.rwa = process_wings(rwa_v)
     
@@ -77,13 +88,13 @@ class Flight():
         # common to both versions    
         self.samples = np.arange(self.xstim.size)  
         self.t = self.samples/float(self.sampling_rate)
-
         self.lmr = self.lwa - self.rwa
-        
         self.iti_s = .5         # later change this for the 5 ms iti trials
             
-    def _is_flying(self, start_i, stop_i, wba_thres=0.5, flying_time_thresh=0.95):  #fix this critera
-        #check that animal is flying 
+    def _is_flying(self, start_i, stop_i, wba_thres=0.5, flying_time_thresh=0.95):  
+        # return whether the fly is flying within an index range
+        # written for wing beat analyzer signals
+        
         l_nonzero_samples = np.where(self.lwa[start_i:stop_i] > wba_thres)[0]
         r_nonzero_samples = np.where(self.rwa[start_i:stop_i] > wba_thres)[0]
         n_flying_samples = np.size(np.intersect1d(l_nonzero_samples,r_nonzero_samples))
@@ -98,7 +109,9 @@ class Flight():
 
 class Spot_Saccadic_Supression(Flight):
     
-    def process_fly(self, show_tr_time_parsing=False, ex_i=[]):  #does this interfere with the Flight_Phys init?
+    def process_fly(self, show_tr_time_parsing=False, ex_i=[]): 
+        # create data structure for the experiment
+        
         self.open_abf(ex_i)
         self.parse_trial_times(show_tr_time_parsing)
         self.parse_stim_type()
@@ -120,14 +133,13 @@ class Spot_Saccadic_Supression(Flight):
                 non_flight_trs.append(tr_i) 
         
         #print 'nonflight trials : ' + ', '.join(str(x) for x in non_flight_trs)
-        print 'nonflight trials : ' + str(np.size(non_flight_trs)) + '/' + str(self.n_trs)
+        print 'nonflight trial counts : ' + str(np.size(non_flight_trs)) + '/' + str(self.n_trs)
         
-        #now remove these
+        #now remove nonflight trials
         self.n_nonflight_trs = np.size(non_flight_trs)
         self.n_trs = self.n_trs - np.size(non_flight_trs)
-        self.tr_starts = np.delete(self.tr_starts,non_flight_trs)  #index values of starting and stopping
+        self.tr_starts = np.delete(self.tr_starts,non_flight_trs)  
         self.tr_stops = np.delete(self.tr_stops,non_flight_trs)
-        #self.pre_loom_stim_ons = np.delete(self.pre_loom_stim_ons,non_flight_trs)
                     
     def parse_trial_times(self, if_debug_fig=False):
         # parse the ao signal to determine trial start and stop index values
@@ -148,20 +160,20 @@ class Spot_Saccadic_Supression(Flight):
         tr_stop = self.samples[np.where(ao_diff < ao_d_lower_bound)]
         stop_diff = np.diff(tr_stop)
         redundant_stops = tr_stop[np.where(stop_diff < 1000)] 
-        #now check that the y value is > -9 
+        # now check that the y value is > -9 
         clean_tr_stop_candidates = np.setdiff1d(tr_stop,redundant_stops)+1
         
         clean_tr_stops = clean_tr_stop_candidates[np.where(self.ao[clean_tr_stop_candidates-50] > 2)]
         
-        #check that first start is before first stop
+        # check that first start is before first stop
         if clean_tr_stops[0] < clean_tr_starts[0]: 
             clean_tr_stops = np.delete(clean_tr_stops,0)
          
-        #last stop is after last start
+        # last stop is after last start
         if clean_tr_starts[-1] > clean_tr_stops[-1]:
             clean_tr_starts = np.delete(clean_tr_starts,len(clean_tr_starts)-1)
          
-        #should check for same # of starts and stops
+        # I should check for same # of starts and stops
         n_trs = len(clean_tr_starts)
         
         if if_debug_fig:
@@ -180,11 +192,11 @@ class Spot_Saccadic_Supression(Flight):
         self.tr_starts = clean_tr_starts  #index values of starting and stopping
         self.tr_stops = clean_tr_stops
         
-        #here remove all trials in which the fly is not flying. 
+        ## remove all trials in which the fly is not flying. 
         #self.remove_non_flight_trs()
         
     def parse_stim_type(self):
-        #calculate the stimulus type
+        #calculate, save the stimulus type of each trial
        
         ## 3.80; % [1] Spot on L, moving back to front (4th stimulus, in order)
         ## 3.90; % [2] Spot on L, moving front to back (3rd stimulus, in order)
@@ -222,9 +234,6 @@ class Spot_Saccadic_Supression(Flight):
         
         self.stim_types = stim_types  #change to integer, although nans are also useful
         
-        
-        
-            
     def plot_wba_by_cnd(self,title_txt='',long_static_spot=False,wba_lim=[-1.5,1.5],
             filter_cutoff=48,tr_range=slice(None), if_save=True): 
         # plot stacked single traces of each of the four saccadic movement conditions
@@ -234,27 +243,31 @@ class Spot_Saccadic_Supression(Flight):
             filter_cutoff = 16
         
         sampling_rate = self.sampling_rate  
-        s_iti = .25 * sampling_rate    
+        s_iti = .25 * sampling_rate  # I'm taking a subset of the iti here  
         
-        baseline_win = range(0*sampling_rate,int(.125*sampling_rate)) 
+        baseline_win = range(0*sampling_rate,int(s_iti/2.0)) 
         
-        #get all traces and detect saccades ______________________________________________
+        # get all traces _____________________________________________
+        # now not detecting saccades automatically. 
+        # all_fly_saccades is blank
         all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=False)
-             
+        
+        # set up axes _____________________________________________     
         n_cols = 4 
         n_rows = 2
-        
+    
         cnds_to_plot = self.unique_stim_types
-        gs = gridspec.GridSpec(n_rows,n_cols,height_ratios=[1,.15,])
+        gs = gridspec.GridSpec(n_rows,n_cols,height_ratios=[1,.1])
 
-        fig = plt.figure(figsize=(16.5, 9))
-        gs.update(wspace=0.1, hspace=0.2) # set the spacing between axes. 
+        #fig = plt.figure(figsize=(16.5, 9))
+        fig = plt.figure(figsize=(13.5, 10))
         
-        #store all subplots for formatting later           
+        gs.update(wspace=0.03, hspace=0.03) # set the spacing between axes. 
+        
+        # store all subplots for formatting later           
         all_wba_ax = np.empty(n_cols,dtype=plt.Axes)
         all_stim_ax = np.empty(n_cols,dtype=plt.Axes)
         
-        #set order of stimuli to plot
         
         # loop through the conditions/columns ____________________________________
         for col in range(n_cols):
@@ -318,15 +331,15 @@ class Spot_Saccadic_Supression(Flight):
             
             # show turn window
             if long_static_spot:
-                all_wba_ax[col].axvspan(1630, 1730, facecolor='grey', alpha=0.5)    
+                all_wba_ax[col].axvspan(2365, 2465, facecolor='grey', alpha=0.5)    
             else:
-                all_wba_ax[col].axvspan(630, 730, facecolor='grey', alpha=0.5)    
+                all_wba_ax[col].axvspan(1370, 1470, facecolor='grey', alpha=0.5)    
             
             # remove all time xticklabels __________________________________
             all_wba_ax[col].tick_params(labelbottom='off')
             
             # label columns
-            all_wba_ax[col].set_title(self.stim_types_labels[cnds_to_plot[col]],fontsize=12)
+            all_wba_ax[col].set_title(self.stim_types_labels[cnds_to_plot[col]],fontsize=10)
             
             
             if col == 0:           
@@ -335,6 +348,7 @@ class Spot_Saccadic_Supression(Flight):
                 all_wba_ax[col].set_ylim(wba_lim)
                 all_wba_ax[col].set_yticks([wba_lim[0],0,wba_lim[1]])
                 
+                all_stim_ax[col].set_ylabel('stim frame',fontsize=10)
                 all_stim_ax[col].tick_params(labelleft='off')
                 all_stim_ax[col].tick_params(labelbottom='off')
             
@@ -348,9 +362,9 @@ class Spot_Saccadic_Supression(Flight):
                 formatter = FuncFormatter(div_sample_rate) 
                 
                 if long_static_spot:
-                    all_wba_ax[col].set_xlim([sampling_rate,2*sampling_rate]) #enforce max time
+                    all_wba_ax[col].set_xlim([0,2.775*sampling_rate]) #enforce max time
                 else:
-                    all_wba_ax[col].set_xlim([0, 1*sampling_rate]) #enforce max time
+                    all_wba_ax[col].set_xlim([0,1.775*sampling_rate]) #enforce max time
                 
                 
                 all_stim_ax[col].xaxis.set_major_formatter(formatter)
@@ -368,8 +382,8 @@ class Spot_Saccadic_Supression(Flight):
         plt.draw()
 
         if if_save:
-            saveas_path = '/Users/jamie/bin/figures/'
-            plt.savefig(saveas_path + figure_txt + '_sacc_supression_wba_by_cnd_filtered_cutoff'+str(filter_cutoff)+'.png',\
+            saveas_path = '/Users/jamie/bin/figures/overlaid trials/'
+            plt.savefig(saveas_path + figure_txt + '_sacc_supression_wba_by_cnd.png',\
                             bbox_inches='tight',dpi=100) 
 
     def plot_wba_by_cnd_y_offset(self,title_txt='',long_static_spot=False,diff_thres=0.025,trs_to_mark=[],\
@@ -383,7 +397,7 @@ class Spot_Saccadic_Supression(Flight):
             saccade_stim_trs = []
             
         sampling_rate = self.sampling_rate
-        s_iti = .25 * sampling_rate      # ********* move to fly info
+        s_iti = .25 * sampling_rate      
         tr_offset = 3.0 #5.5
         
         if self.protocol == 'optical tracking':
@@ -394,8 +408,16 @@ class Spot_Saccadic_Supression(Flight):
         #baseline_win = range(0*sampling_rate,int(.125*sampling_rate)) 
         baseline_win = range(0*sampling_rate,int(.1*sampling_rate)) 
         
-        #get all traces and detect saccades ______________________________________________
+        # get all traces and detect saccades ______________________________________________
         all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=False)
+        
+        # discard the traces earlier in time.
+        # this value is somewhat arbitrary, but saccade times are relative it.
+        new_start_t = int(3*s_iti) 
+        all_fly_traces = all_fly_traces.ix[new_start_t:,slice(None)]
+        new_index = np.array(all_fly_traces.index) - new_start_t
+        all_fly_traces.index = new_index
+        
              
         n_cols = 4 
         n_rows = 2
@@ -403,8 +425,8 @@ class Spot_Saccadic_Supression(Flight):
         cnds_to_plot = self.unique_stim_types
         gs = gridspec.GridSpec(n_rows,n_cols,height_ratios=[1,.05])
 
-        fig = plt.figure(figsize=(14.5, 14.5))
-        gs.update(wspace=0.1, hspace=0.025) # set the spacing between axes. 
+        fig = plt.figure(figsize=(13.5, 10))
+        gs.update(wspace=0.03, hspace=0.03) # set the spacing between axes.  
         
         #store all subplots for formatting later           
         all_wba_ax = np.empty(n_cols,dtype=plt.Axes)
@@ -442,12 +464,12 @@ class Spot_Saccadic_Supression(Flight):
      
                 # plot WBA signal ____________________________________________________           
                 wba_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'lmr')]
-    
+            
                 baseline = np.nanmean(wba_trace[baseline_win])
                 wba_trace = wba_trace - baseline  
                 #wba_ax.plot(wba_trace+i/2.0,color=this_color)
                
-                non_nan_i = np.where(~np.isnan(wba_trace))[0] 
+                non_nan_i = np.where(~np.isnan(wba_trace))[0]       
                 filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=filter_cutoff,fs=self.sampling_rate)
                 
                 # check if stim,trial combination is in this list. if so, plot in 
@@ -483,11 +505,7 @@ class Spot_Saccadic_Supression(Flight):
                 wba_ax.text(0,i/tr_offset,str(i),
                     verticalalignment='bottom', horizontalalignment='right',
                     color=this_color, fontsize=8)
-                #transform=wba_ax.transAxes,
-                    
-               
-                #cutoff=12
-               
+            
                 #now plot stimulus traces ____________________________________________
                 #stim_ax.plot(all_fly_traces.loc[::10,('this_fly',tr,cnd,'xstim')],color=this_color)
                 stim_ax.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'xstim')],color=this_color)
@@ -554,10 +572,10 @@ class Spot_Saccadic_Supression(Flight):
                 formatter = FuncFormatter(div_sample_rate) 
                 
                 if long_static_spot:
-                    all_wba_ax[col].set_xlim([sampling_rate, 2*sampling_rate]) #enforce max time
+                    all_wba_ax[col].set_xlim([0*sampling_rate, 2*sampling_rate]) #enforce max time
                 else:
-                    all_wba_ax[col].set_xlim([0, 1*sampling_rate]) #enforce max time
-                
+                    all_wba_ax[col].set_xlim([0*sampling_rate, 1*sampling_rate]) #enforce max time
+
                 all_stim_ax[col].xaxis.set_major_formatter(formatter)
                 all_stim_ax[col].tick_params(labelbottom='on')
                 all_stim_ax[col].tick_params(labelleft='off')
@@ -576,9 +594,9 @@ class Spot_Saccadic_Supression(Flight):
         plt.draw()
 
         if if_save:
-            saveas_path = '/Users/jamie/bin/figures/'
-            plt.savefig(saveas_path + figure_txt + '_wba_by_cnd_overlay_filter_cutoff'+str(filter_cutoff)+'.png',\
-                            bbox_inches='tight',dpi=100)     
+            saveas_path = '/Users/jamie/bin/figures/offset trials/'
+            plt.savefig(saveas_path + figure_txt + '_wba_by_cnd_yoffset.png',\
+                            bbox_inches='tight',dpi=200)     
         
         
         
@@ -673,7 +691,7 @@ class Spot_Saccadic_Supression(Flight):
        
         for tr in range(self.n_trs):
             this_loom_start = self.tr_starts[tr]
-            this_start = this_loom_start + 2*iti  #- iti
+            this_start = this_loom_start - iti   # previously -- 2*iti. I'm not sure why.  
             this_stop = self.tr_stops[tr] + iti  #hack ----------
             
             this_stim_type = self.stim_types[tr]
