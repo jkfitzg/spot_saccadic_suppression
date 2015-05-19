@@ -303,8 +303,8 @@ class Spot_Saccadic_Supression(Flight):
                 non_nan_i = np.where(~np.isnan(wba_trace))[0] # trials are buffered by nans at the end
                 filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=filter_cutoff,fs=self.sampling_rate)
                  
-                wba_ax.plot(filtered_wba_trace,color=this_color)
-                #wba_ax.plot(wba_trace,color=this_color)
+                #wba_ax.plot(filtered_wba_trace,color=this_color)
+                wba_ax.plot(wba_trace,color=this_color)
                
                 # plot stimulus traces ____________________________________________
                 stim_ax.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'xstim')],color=this_color)
@@ -498,15 +498,17 @@ class Spot_Saccadic_Supression(Flight):
                         wba_ax.plot(saccade_t,filtered_wba_trace[saccade_t]+i/tr_offset,\
                             marker='v',markersize=10,linestyle='None',color=black)
                 else:
-                    wba_ax.plot(filtered_wba_trace+i/tr_offset,color=this_color,linewidth=1)    
+                    #wba_ax.plot(filtered_wba_trace+i/tr_offset,color=this_color,linewidth=1)    
+                    wba_ax.plot(wba_trace+i/tr_offset,color=this_color,linewidth=1)    
+                
                 
                 # now get potential saccade start times by differentiating the filtered
                 # trace and then applying and threshold
                 
-                if diff_thres: # skip this if diff_thres is set to 0
-                    candidate_saccade_is = find_candidate_saccades(filtered_wba_trace,diff_thres=diff_thres)
-                    wba_ax.plot(candidate_saccade_is,filtered_wba_trace[candidate_saccade_is]+i/tr_offset,\
-                            marker='*',linestyle='None',color=grey)
+                #if diff_thres: # skip this if diff_thres is set to 0
+                    #candidate_saccade_is = find_candidate_saccades(filtered_wba_trace,diff_thres=diff_thres)
+                    #wba_ax.plot(candidate_saccade_is,filtered_wba_trace[candidate_saccade_is]+i/tr_offset,\
+                    #        marker='*',linestyle='None',color=grey)
                  
                 wba_ax.text(0,i/tr_offset,str(i),
                     verticalalignment='bottom', horizontalalignment='right',
@@ -890,7 +892,7 @@ def get_saccade_and_control_traces(saccades_dict,filter_fs=1000):
     
     print 'n saccades = ' + str(n_saccades)
     
-    for f_name in saccades_dict.keys():
+    for f_name in saccades_dict: 
     
         #print f_name
         fly = Spot_Saccadic_Supression(path_name + '2015_'+ f_name)
@@ -1352,7 +1354,7 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
         prev_traces = this_dir_trs_all_traces.loc[:,(slice(None),'prev')].values
         prev_means = np.nanmean(prev_traces,axis=1) # - np.nanmean(prev_traces[sub_window])
         prev_ste = np.nanstd(prev_traces,axis=1)/math.sqrt(n_this_saccades)
-        overlaid_wba_ax.plot(prev_means-overlaid_offset,color=bblue,linewidth=3)
+        overlaid_wba_ax.plot(prev_means-overlaid_offset,color=blue,linewidth=3)
     
         # get,plot error bars
         lower_bound = prev_means - prev_ste
@@ -1394,7 +1396,7 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
     all_overlaid_wba_ax[0].locator_params(tight=True,nbins=5,axis='y') #set n bins to 3
              
     all_offset_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
-    all_overlaid_wba_ax[0].set_ylabel('L-R WBA (V)+tr offset')
+    all_overlaid_wba_ax[0].set_ylabel('L-R WBA (V)')
     all_overlaid_wba_ax[0].set_xlabel('Time (ms)')
 
     # remove extra xtick labels
@@ -1402,6 +1404,11 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
         plt.setp(all_offset_wba_ax[col].get_xticklabels(), visible=False)
         plt.setp(all_stim_ax[col].get_xticklabels(), visible=False)
         plt.setp(all_stim_ax[col].get_yticklabels(), visible=False)
+        
+        #now annotate stimulus positions, title ______________________________________      
+        fig.text(.04,.34,'previous tr',color=blue,fontsize=10)
+        fig.text(.04,.32,'saccade tr',color=magenta,fontsize=10)                    
+        fig.text(.04,.3,'post tr',color=black,fontsize=10)
     
         if col > 0:
             plt.setp(all_offset_wba_ax[col].get_yticklabels(), visible=False)
