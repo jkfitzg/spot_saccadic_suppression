@@ -303,8 +303,8 @@ class Spot_Saccadic_Supression(Flight):
                 non_nan_i = np.where(~np.isnan(wba_trace))[0] # trials are buffered by nans at the end
                 filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],cutoff=filter_cutoff,fs=self.sampling_rate)
                  
-                #wba_ax.plot(filtered_wba_trace,color=this_color)
-                wba_ax.plot(wba_trace,color=this_color)
+                wba_ax.plot(filtered_wba_trace,color=this_color)
+                #wba_ax.plot(wba_trace,color=this_color)
                
                 # plot stimulus traces ____________________________________________
                 stim_ax.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'xstim')],color=this_color)
@@ -404,7 +404,7 @@ class Spot_Saccadic_Supression(Flight):
             
         sampling_rate = self.sampling_rate
         s_iti = .25 * sampling_rate      
-        tr_offset = 3.0 #5.5
+        tr_offset = 1 #3.0 
         
         if self.protocol == 'optical tracking':
             filter_cutoff = 16
@@ -498,8 +498,8 @@ class Spot_Saccadic_Supression(Flight):
                         wba_ax.plot(saccade_t,filtered_wba_trace[saccade_t]+i/tr_offset,\
                             marker='v',markersize=10,linestyle='None',color=black)
                 else:
-                    #wba_ax.plot(filtered_wba_trace+i/tr_offset,color=this_color,linewidth=1)    
-                    wba_ax.plot(wba_trace+i/tr_offset,color=this_color,linewidth=1)    
+                    wba_ax.plot(filtered_wba_trace+i/tr_offset,color=this_color,linewidth=1)    
+                    #wba_ax.plot(wba_trace+i/tr_offset,color=this_color,linewidth=1)    
                 
                 
                 # now get potential saccade start times by differentiating the filtered
@@ -1286,9 +1286,8 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
         #  get the saccade start times for this stimulus direction
         this_stim_saccade_start_ts = saccade_info.ix['start_t',this_stim_dir_trs]
         
-        # now just select saccades that in this time range
-        saccade_turn_t = 640
-        spot_move_t = 575 # approximate
+        # now just select saccades that start in this time range
+        spot_move_t = 575 # approximate -- if I care about ms precision, calculate this for each trial
         this_min_t  = min_pre_saccade_t + spot_move_t
         this_max_t = max_pre_saccade_t + spot_move_t
         
@@ -1420,3 +1419,197 @@ def plot_saccade_traces_pre_pos_y_offset_time_sorted(saccade_info, saccade_and_c
     saveas_path = '/Users/jamie/bin/figures/'
     plt.savefig(saveas_path+title_text+' population.png',\
                 bbox_inches='tight',dpi=100)
+
+
+def plot_spot_saccade_amplitude_three_trs(saccade_info, saccade_and_control_traces,
+                                min_pre_saccade_t,max_pre_saccade_t,plot_by_stim=False): 
+    # for each condition, the amplitude of the spot-evoked saccade
+    # for the trials with spont saccades
+    # + their previous and post traces in finer lines
+    #
+    # parameter plot_by_stim allows plotting by spot position (two cnd)
+    # or by stimulus (four cnds)
+    
+    stim_cnds = range(4)
+    stim_titles = ['Spot on right, front->back','Spot on right, back->front',\
+                   'Spot on left, back->front','Spot on left, front->back']
+    
+    spont_sacc_dir = ['R','L']    
+    direction_titles =['right','left']
+    
+    # make a figure -- one row x two or four columns ______________________________________
+    # columns -- stim type or spot position
+    
+    if plot_by_stim:
+        n_cols = 4
+    else:    
+        n_cols = 2
+     
+    n_rows = 1
+        
+    gs = gridspec.GridSpec(n_rows,n_cols)
+    fig = plt.figure(figsize=(14.5, 14.5))
+    gs.update(wspace=0.1, hspace=0.025) # set the spacing between axes. 
+     
+    # store all subplots for formatting later           
+    all_sacc_amp_ax = np.empty(n_cols,dtype=plt.Axes)
+    
+    # specify conditions for looping,
+    # add a clean way to format the left most column
+    if plot_by_stim:
+        col_iter = stim_cnds 
+    else:
+        col_iter = direction_titles
+    first_col = col_iter[0]    
+     
+     
+    saccade_amplitudes = get_all_saccade_amplitudes(saccade_info,saccade_and_control_traces)
+     
+    for col in col_iter: 
+        
+        # find all saccades of the stimulus type ______________________________________
+        
+        if plot_by_stim:
+            this_stim_trs = np.where(saccade_info.ix['cnd',:] == col)[0]
+        else:
+            if col == 'left':
+                this_stim_dirs = [2,3]
+            else:
+                this_stim_dirs = [0,1]
+        
+            stim1_trs = np.where(saccade_info.ix['cnd',:] == this_stim_dirs[0])[0]
+            stim2_trs = np.where(saccade_info.ix['cnd',:] == this_stim_dirs[1])[0]
+        
+            this_stim_trs = np.hstack([stim1_trs,stim2_trs])
+            
+        # create subplots ________________________________________________________              
+        if col == first_col:
+            sacc_amp_ax  = plt.subplot(gs[0,0]) 
+            all_sacc_amp_ax[0] = sacc_amp_ax
+            
+        else: 
+            if plot_by_stim:
+                c_i = col 
+            else:
+                c_i = 1
+            sacc_amp_ax  = plt.subplot(gs[0,c_i], sharex=all_sacc_amp_ax[0], sharey=all_sacc_amp_ax[0]) 
+            all_sacc_amp_ax[c_i] = sacc_amp_ax
+            
+        if plot_by_stim:
+            sacc_amp_ax.set_title(stim_titles[col])
+        else:
+            sacc_amp_ax.set_title('Spot on the ' + col)   
+
+        # intersect direction with the same stimulus type
+        this_stim_dir_trs = this_stim_trs  # just combine all directions of saccades for now
+        
+        #  get the saccade start times for this stimulus direction
+        this_stim_saccade_start_ts = saccade_info.ix['start_t',this_stim_dir_trs]
+        
+        # now just select saccades that start in this time range
+        spot_move_t = 580 # approximate -- if I care about ms precision, calculate this for each trial
+        this_min_t  = min_pre_saccade_t + spot_move_t
+        this_max_t = max_pre_saccade_t + spot_move_t
+        
+        saccades_in_t1 = np.where(this_stim_saccade_start_ts > this_min_t)[0]
+        saccades_in_t2 = np.where(this_stim_saccade_start_ts < this_max_t)[0]
+        saccade_in_t_win_i = np.intersect1d(saccades_in_t1,saccades_in_t2)
+        this_stim_t_saccades = this_stim_dir_trs[saccade_in_t_win_i]
+        
+        # get the number of saccades here
+        n_this_saccades = len(this_stim_t_saccades)    
+    
+        sacc_amp_ax.axhline(color=green)
+        # loop through all saccades
+        for i in this_stim_t_saccades: 
+            sacc_amp_ax.plot(saccade_amplitudes.ix[['prev','sacc','post'],i],color=grey)
+            #show each point in a separate color
+            sacc_amp_ax.plot(0,saccade_amplitudes.ix[['prev'],i],color=blue,marker='+',markersize=15,markeredgewidth=1.5)
+            sacc_amp_ax.plot(1,saccade_amplitudes.ix[['sacc'],i],color=magenta,marker='+',markersize=15,markeredgewidth=1.5)
+            sacc_amp_ax.plot(2,saccade_amplitudes.ix[['post'],i],color=black,marker='+',markersize=15,markeredgewidth=1.5)
+        
+        sacc_amp_ax.set_xlim([-.5, 2.5])
+        
+# overlay boxplot
+#         bp = plt.boxplot(saccade_amplitudes.ix[['prev'],this_stim_t_saccades].as_matrix()\
+#                         ,0,sym=' ',positions=[0])
+#         plt.setp(bp['boxes'], color='black')
+#         plt.setp(bp['whiskers'], color='black') 
+#         plt.setp(bp['medians'], color='blue') 
+#         
+#         bp = plt.boxplot(saccade_amplitudes.ix[['sacc'],this_stim_t_saccades].as_matrix()\
+#                         ,0,sym=' ',positions=[1])
+#         plt.setp(bp['boxes'], color='black')
+#         plt.setp(bp['whiskers'], color='black') 
+#         plt.setp(bp['medians'], color='magenta') 
+#         
+#         bp = plt.boxplot(saccade_amplitudes.ix[['post'],this_stim_t_saccades].as_matrix()\
+#                         ,0,sym=' ',positions=[2])
+#         plt.setp(bp['boxes'], color='black')
+#         plt.setp(bp['whiskers'], color='black') 
+#         plt.setp(bp['medians'], color='black') 
+      
+      
+    if not plot_by_stim:
+        title_text = 'Spontaneous saccades '+str(-1*min_pre_saccade_t) + ' to ' + \
+                        str(-1*max_pre_saccade_t) + ' ms before spot movement_collapsed_position'
+    else:
+        title_text = 'Spontaneous saccades '+str(-1*min_pre_saccade_t) + ' to ' + \
+                        str(-1*max_pre_saccade_t) + ' ms before spot movement'
+                        
+                        
+    # now clean up axes ____________________________________________
+    
+    # first column needs full labels ________        
+    #all_sacc_amp_ax[0].set_ylim([0,10])
+    
+    # add a title 
+             
+    all_sacc_amp_ax[0].set_ylabel('Saccade amplitude (V)')
+    all_sacc_amp_ax[0].set_xlabel('Trial')
+    all_sacc_amp_ax[0].set_xticks([0,1,2])
+    all_sacc_amp_ax[0].set_xticklabels(['previous','saccade','post'])
+    
+    #all_sacc_amp_ax[0].set_xticks([0,1,2],['previous','saccade','post'])
+    
+    # remove extra xtick labels
+    for col in range(n_cols):
+        if col > 0:
+            plt.setp(all_sacc_amp_ax[col].get_yticklabels(), visible=False)
+            plt.setp(all_sacc_amp_ax[col].get_xticklabels(), visible=False)
+        
+    fig.text(.05,.95,title_text,fontsize=14)
+    
+    saveas_path = '/Users/jamie/bin/figures/'
+    plt.savefig(saveas_path+title_text+' amplitude population.png',\
+                bbox_inches='tight',dpi=100)
+
+
+def get_all_saccade_amplitudes(saccade_info,saccade_and_control_traces):
+    # calculate the saccade amplitudes for all traces.
+    # create a data structure in the same format as 
+    # saccade info -- rows: post, prev, sacc columns: saccade id
+
+    n_saccades = np.shape(saccade_info)[1]
+    row_names = ['post','prev','sacc']
+    saccade_amplitudes = pd.DataFrame(index=row_names,\
+                                      columns=range(n_saccades))
+    # stimulus starts moving at ~580 ms
+    spot_move_t = 580
+    saccade_baseline_window = range(625,650)
+    saccade_window = range(650,850) 
+    # window in which the position is usually at its peak or trough
+
+    for i in range(n_saccades):
+        for trace in row_names:
+            baseline_lmr_mean = saccade_and_control_traces.\
+                        ix[saccade_baseline_window,(i,trace)].mean()
+            saccade_win_trace = saccade_and_control_traces.\
+                        ix[saccade_window,(i,trace)].values
+            extreme_i = np.argmax(np.abs(saccade_win_trace))
+
+            this_saccade_amp = saccade_win_trace[extreme_i]-baseline_lmr_mean
+            
+            saccade_amplitudes.ix[trace,i] = this_saccade_amp
+    
+    return saccade_amplitudes
